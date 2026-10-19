@@ -21,6 +21,7 @@ import engine  # noqa: E402
 
 STATIC = Path(__file__).resolve().parent / "static"
 MAX_BODY = 100_000
+DRAIN_LIMIT = 2_000_000  # 너무 큰 요청도 이만큼까지는 읽어서 버린다 (그 이상이면 연결을 닫음)
 CSP = ("default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
        "connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
 
@@ -89,7 +90,30 @@ class Handler(BaseHTTPRequestHandler):
         self._error(404, "찾을 수 없습니다.")
 
     # ---- POST
+    def _read_body(self):
+        """요청 본문을 먼저 읽어 둔다. 거절 응답을 보내기 전에 본문을 소비하지 않으면,
+        클라이언트가 본문을 보내는 도중 연결이 끊겨 거절 응답을 못 받는 일이 간헐적으로 생긴다.
+        반환: (본문 바이트, 길이 오류 여부, 너무 큼 여부)"""
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            return b"", True, False
+        if length < 0:
+            return b"", True, False
+        if length <= MAX_BODY:
+            return self.rfile.read(length), False, False
+        remaining = min(length, DRAIN_LIMIT)  # 너무 큰 본문은 읽고 버리되 상한까지만
+        while remaining > 0:
+            chunk = self.rfile.read(min(65536, remaining))
+            if not chunk:
+                break
+            remaining -= len(chunk)
+        if length > DRAIN_LIMIT:
+            self.close_connection = True  # 끝까지 소비하지 못했으니 연결을 닫는다
+        return b"", False, True
+
     def do_POST(self):
+        raw, bad_length, too_big = self._read_body()
         if self.headers.get("Host", "") not in self._allowed_hosts():
             return self._error(403, "허용되지 않은 접속 주소입니다.")
         origin = self.headers.get("Origin")
@@ -99,14 +123,12 @@ class Handler(BaseHTTPRequestHandler):
             return self._error(415, "JSON 요청만 받습니다.")
         if self.headers.get("X-PocDesk") != "1":
             return self._error(403, "잘못된 요청입니다.")
-        try:
-            length = int(self.headers.get("Content-Length") or 0)
-        except ValueError:
+        if bad_length:
             return self._error(400, "잘못된 요청입니다.")
-        if length > MAX_BODY:
+        if too_big:
             return self._error(413, "요청이 너무 큽니다.")
         try:
-            body = json.loads(self.rfile.read(length) or b"{}")
+            body = json.loads(raw or b"{}")
             if not isinstance(body, dict):
                 raise ValueError
         except ValueError:

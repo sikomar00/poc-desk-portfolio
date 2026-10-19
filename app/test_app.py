@@ -208,6 +208,14 @@ class Http(unittest.TestCase):
         big = b'{"question":"' + b"x" * 200_000 + b'"}'
         self.assertEqual(self.req("POST", "/api/intake", big, {"X-PocDesk": "1", "Content-Type": "application/json"})[0], 413)
 
+    def test_rejections_with_body_arrive_reliably(self):
+        """회귀 테스트: 거절하는 POST도 본문을 먼저 읽어야 클라이언트가 간헐적으로 연결이 끊기지 않는다."""
+        body = json.dumps({"question": "x" * 5000}).encode()
+        for _ in range(40):
+            self.assertEqual(self.req("POST", "/api/intake", body, {"Content-Type": "application/json"})[0], 403)
+            self.assertEqual(self.req("POST", "/api/intake", body, {"Content-Type": "text/plain", "X-PocDesk": "1"})[0], 415)
+            self.assertEqual(self.post("/api/intake", {"question": "x"}, headers={"Origin": "http://evil.example.com"})[0], 403)
+
     def test_end_to_end_flow(self):
         s, _, d = self.post("/api/intake", {"question": "2월에 얼마 벌었어?"})
         intake = json.loads(d)
