@@ -10,3 +10,7 @@ data/private/
 *.key
 __pycache__/
 experiment/runs_mock/
+
+# PoC Desk 앱이 실행 중 만드는 사용자 데이터(실행 기록, 정의, 리포트)
+app/data/
+app/reports/
