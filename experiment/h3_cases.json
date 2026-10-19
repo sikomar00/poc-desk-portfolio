@@ -1,0 +1,92 @@
+[
+  {
+    "id": "H3-01",
+    "wrong_definition": "V0 주문총액 합계 (모든 주문, 주문일)",
+    "month": "2026-01",
+    "sql": "SELECT * FROM (\n        SELECT strftime('%Y-%m', ordered_at) m, SUM(total_amount)\n        FROM orders GROUP BY m) WHERE m = '2026-01'",
+    "claimed_value": 31776600,
+    "ledger_value": 23304000,
+    "should_flag": true
+  },
+  {
+    "id": "H3-02",
+    "wrong_definition": "V0 주문총액 합계 (모든 주문, 주문일)",
+    "month": "2026-03",
+    "sql": "SELECT * FROM (\n        SELECT strftime('%Y-%m', ordered_at) m, SUM(total_amount)\n        FROM orders GROUP BY m) WHERE m = '2026-03'",
+    "claimed_value": 25723500,
+    "ledger_value": 21240000,
+    "should_flag": true
+  },
+  {
+    "id": "H3-03",
+    "wrong_definition": "V1 결제완료 총액 (부가세·배송비 포함, 결제일)",
+    "month": "2026-01",
+    "sql": "SELECT * FROM (\n        SELECT strftime('%Y-%m', paid_at) m, SUM(total_amount)\n        FROM orders WHERE paid_at IS NOT NULL GROUP BY m) WHERE m = '2026-01'",
+    "claimed_value": 27600400,
+    "ledger_value": 23304000,
+    "should_flag": true
+  },
+  {
+    "id": "H3-04",
+    "wrong_definition": "V1 결제완료 총액 (부가세·배송비 포함, 결제일)",
+    "month": "2026-03",
+    "sql": "SELECT * FROM (\n        SELECT strftime('%Y-%m', paid_at) m, SUM(total_amount)\n        FROM orders WHERE paid_at IS NOT NULL GROUP BY m) WHERE m = '2026-03'",
+    "claimed_value": 24567600,
+    "ledger_value": 21240000,
+    "should_flag": true
+  },
+  {
+    "id": "H3-05",
+    "wrong_definition": "V2 결제완료 상품금액 (부가세·배송비 제외, 결제일, 취소·환불 미반영)",
+    "month": "2026-01",
+    "sql": "SELECT * FROM (\n        SELECT strftime('%Y-%m', paid_at) m, SUM(items_ex_vat)\n        FROM orders WHERE paid_at IS NOT NULL GROUP BY m) WHERE m = '2026-01'",
+    "claimed_value": 25004000,
+    "ledger_value": 23304000,
+    "should_flag": true
+  },
+  {
+    "id": "H3-06",
+    "wrong_definition": "V2 결제완료 상품금액 (부가세·배송비 제외, 결제일, 취소·환불 미반영)",
+    "month": "2026-03",
+    "sql": "SELECT * FROM (\n        SELECT strftime('%Y-%m', paid_at) m, SUM(items_ex_vat)\n        FROM orders WHERE paid_at IS NOT NULL GROUP BY m) WHERE m = '2026-03'",
+    "claimed_value": 22206000,
+    "ledger_value": 21240000,
+    "should_flag": true
+  },
+  {
+    "id": "H3-07",
+    "wrong_definition": "V3 V2에서 status=CANCELLED 제외 (환불은 미반영)",
+    "month": "2026-01",
+    "sql": "SELECT * FROM (\n        SELECT strftime('%Y-%m', paid_at) m, SUM(items_ex_vat)\n        FROM orders WHERE paid_at IS NOT NULL AND status='PAID' GROUP BY m) WHERE m = '2026-01'",
+    "claimed_value": 23818000,
+    "ledger_value": 23304000,
+    "should_flag": true
+  },
+  {
+    "id": "H3-08",
+    "wrong_definition": "V3 V2에서 status=CANCELLED 제외 (환불은 미반영)",
+    "month": "2026-03",
+    "sql": "SELECT * FROM (\n        SELECT strftime('%Y-%m', paid_at) m, SUM(items_ex_vat)\n        FROM orders WHERE paid_at IS NOT NULL AND status='PAID' GROUP BY m) WHERE m = '2026-03'",
+    "claimed_value": 21631000,
+    "ledger_value": 21240000,
+    "should_flag": true
+  },
+  {
+    "id": "H3-09",
+    "wrong_definition": "V4 V3 + 환불 차감 (환불일 월에 귀속, 환불액은 부가세 포함 그대로)",
+    "month": "2026-01",
+    "sql": "SELECT * FROM (\n        SELECT m, SUM(v) FROM (\n            SELECT strftime('%Y-%m', paid_at) m, items_ex_vat v\n              FROM orders WHERE paid_at IS NOT NULL AND status='PAID'\n            UNION ALL\n            SELECT strftime('%Y-%m', refunded_at) m, -refund_amount\n              FROM refunds r JOIN orders o USING(order_id) WHERE o.status='PAID'\n        ) GROUP BY m) WHERE m = '2026-01'",
+    "claimed_value": 23571600,
+    "ledger_value": 23304000,
+    "should_flag": true
+  },
+  {
+    "id": "H3-10",
+    "wrong_definition": "V4 V3 + 환불 차감 (환불일 월에 귀속, 환불액은 부가세 포함 그대로)",
+    "month": "2026-03",
+    "sql": "SELECT * FROM (\n        SELECT m, SUM(v) FROM (\n            SELECT strftime('%Y-%m', paid_at) m, items_ex_vat v\n              FROM orders WHERE paid_at IS NOT NULL AND status='PAID'\n            UNION ALL\n            SELECT strftime('%Y-%m', refunded_at) m, -refund_amount\n              FROM refunds r JOIN orders o USING(order_id) WHERE o.status='PAID'\n        ) GROUP BY m) WHERE m = '2026-03'",
+    "claimed_value": 21108500,
+    "ledger_value": 21240000,
+    "should_flag": true
+  }
+]
