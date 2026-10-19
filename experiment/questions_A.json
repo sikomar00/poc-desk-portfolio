@@ -1,0 +1,230 @@
+[
+  {
+    "id": "Q01",
+    "question": "2026년 1월 매출 알려줘",
+    "metric": "net_revenue",
+    "months": [
+      "2026-01"
+    ],
+    "targets_conflict": "부가세·취소·환불 포함 여부",
+    "gold_sql": "SELECT SUM(o.items_ex_vat) - COALESCE(SUM(CASE r.refund_type WHEN 'FULL' THEN o.items_ex_vat ELSE r.refund_amount * 100 / 110 END), 0) FROM orders o LEFT JOIN refunds r USING (order_id) WHERE o.paid_at IS NOT NULL AND strftime('%Y-%m', o.paid_at) IN ('2026-01')",
+    "gold_value": 23304000
+  },
+  {
+    "id": "Q02",
+    "question": "2월에 얼마 벌었어?",
+    "metric": "net_revenue",
+    "months": [
+      "2026-02"
+    ],
+    "targets_conflict": "부가세·환불, 모호한 표현",
+    "gold_sql": "SELECT SUM(o.items_ex_vat) - COALESCE(SUM(CASE r.refund_type WHEN 'FULL' THEN o.items_ex_vat ELSE r.refund_amount * 100 / 110 END), 0) FROM orders o LEFT JOIN refunds r USING (order_id) WHERE o.paid_at IS NOT NULL AND strftime('%Y-%m', o.paid_at) IN ('2026-02')",
+    "gold_value": 18287000
+  },
+  {
+    "id": "Q03",
+    "question": "3월 순매출은?",
+    "metric": "net_revenue",
+    "months": [
+      "2026-03"
+    ],
+    "targets_conflict": "'순'의 의미(환불 차감)",
+    "gold_sql": "SELECT SUM(o.items_ex_vat) - COALESCE(SUM(CASE r.refund_type WHEN 'FULL' THEN o.items_ex_vat ELSE r.refund_amount * 100 / 110 END), 0) FROM orders o LEFT JOIN refunds r USING (order_id) WHERE o.paid_at IS NOT NULL AND strftime('%Y-%m', o.paid_at) IN ('2026-03')",
+    "gold_value": 21240000
+  },
+  {
+    "id": "Q04",
+    "question": "1분기 매출 합계는?",
+    "metric": "net_revenue",
+    "months": [
+      "2026-01",
+      "2026-02",
+      "2026-03"
+    ],
+    "targets_conflict": "다중 월 합산",
+    "gold_sql": "SELECT SUM(o.items_ex_vat) - COALESCE(SUM(CASE r.refund_type WHEN 'FULL' THEN o.items_ex_vat ELSE r.refund_amount * 100 / 110 END), 0) FROM orders o LEFT JOIN refunds r USING (order_id) WHERE o.paid_at IS NOT NULL AND strftime('%Y-%m', o.paid_at) IN ('2026-01','2026-02','2026-03')",
+    "gold_value": 62831000
+  },
+  {
+    "id": "Q05",
+    "question": "1월 31일 밤에 주문하고 다음 날 결제된 건이 들어간 2월 매출은?",
+    "metric": "net_revenue",
+    "months": [
+      "2026-02"
+    ],
+    "targets_conflict": "결제일 vs 주문일",
+    "gold_sql": "SELECT SUM(o.items_ex_vat) - COALESCE(SUM(CASE r.refund_type WHEN 'FULL' THEN o.items_ex_vat ELSE r.refund_amount * 100 / 110 END), 0) FROM orders o LEFT JOIN refunds r USING (order_id) WHERE o.paid_at IS NOT NULL AND strftime('%Y-%m', o.paid_at) IN ('2026-02')",
+    "gold_value": 18287000
+  },
+  {
+    "id": "Q06",
+    "question": "1월 환불률은?",
+    "metric": "refund_rate",
+    "months": [
+      "2026-01"
+    ],
+    "targets_conflict": "분모 정의, 부분환불",
+    "gold_sql": "SELECT ROUND(100.0 * COALESCE(SUM(CASE r.refund_type WHEN 'FULL' THEN o.items_ex_vat ELSE r.refund_amount * 100 / 110 END), 0) / SUM(o.items_ex_vat), 2) FROM orders o LEFT JOIN refunds r USING (order_id) WHERE o.paid_at IS NOT NULL AND strftime('%Y-%m', o.paid_at) IN ('2026-01')",
+    "gold_value": 6.8
+  },
+  {
+    "id": "Q07",
+    "question": "2월에 환불이 얼마나 나갔어? 비율로 알려줘",
+    "metric": "refund_rate",
+    "months": [
+      "2026-02"
+    ],
+    "targets_conflict": "분자·분모, 모호한 표현",
+    "gold_sql": "SELECT ROUND(100.0 * COALESCE(SUM(CASE r.refund_type WHEN 'FULL' THEN o.items_ex_vat ELSE r.refund_amount * 100 / 110 END), 0) / SUM(o.items_ex_vat), 2) FROM orders o LEFT JOIN refunds r USING (order_id) WHERE o.paid_at IS NOT NULL AND strftime('%Y-%m', o.paid_at) IN ('2026-02')",
+    "gold_value": 8.67
+  },
+  {
+    "id": "Q08",
+    "question": "3월 환불 비율",
+    "metric": "refund_rate",
+    "months": [
+      "2026-03"
+    ],
+    "targets_conflict": "결제 후 취소의 전액환불 포함",
+    "gold_sql": "SELECT ROUND(100.0 * COALESCE(SUM(CASE r.refund_type WHEN 'FULL' THEN o.items_ex_vat ELSE r.refund_amount * 100 / 110 END), 0) / SUM(o.items_ex_vat), 2) FROM orders o LEFT JOIN refunds r USING (order_id) WHERE o.paid_at IS NOT NULL AND strftime('%Y-%m', o.paid_at) IN ('2026-03')",
+    "gold_value": 4.35
+  },
+  {
+    "id": "Q09",
+    "question": "1분기 환불률은?",
+    "metric": "refund_rate",
+    "months": [
+      "2026-01",
+      "2026-02",
+      "2026-03"
+    ],
+    "targets_conflict": "합계끼리 나누기 vs 월 평균",
+    "gold_sql": "SELECT ROUND(100.0 * COALESCE(SUM(CASE r.refund_type WHEN 'FULL' THEN o.items_ex_vat ELSE r.refund_amount * 100 / 110 END), 0) / SUM(o.items_ex_vat), 2) FROM orders o LEFT JOIN refunds r USING (order_id) WHERE o.paid_at IS NOT NULL AND strftime('%Y-%m', o.paid_at) IN ('2026-01','2026-02','2026-03')",
+    "gold_value": 6.55
+  },
+  {
+    "id": "Q10",
+    "question": "1월 취소율",
+    "metric": "cancel_rate",
+    "months": [
+      "2026-01"
+    ],
+    "targets_conflict": "결제 전·후 취소, PENDING 제외",
+    "gold_sql": "SELECT ROUND(100.0 * SUM(o.status='CANCELLED') / COUNT(*), 2) FROM orders o WHERE o.status IN ('PAID','CANCELLED') AND strftime('%Y-%m', o.ordered_at) IN ('2026-01')",
+    "gold_value": 10.17
+  },
+  {
+    "id": "Q11",
+    "question": "2월 주문 중 취소된 비율은?",
+    "metric": "cancel_rate",
+    "months": [
+      "2026-02"
+    ],
+    "targets_conflict": "분모에 PENDING 포함 여부",
+    "gold_sql": "SELECT ROUND(100.0 * SUM(o.status='CANCELLED') / COUNT(*), 2) FROM orders o WHERE o.status IN ('PAID','CANCELLED') AND strftime('%Y-%m', o.ordered_at) IN ('2026-02')",
+    "gold_value": 7.75
+  },
+  {
+    "id": "Q12",
+    "question": "3월 취소율은 몇 %야?",
+    "metric": "cancel_rate",
+    "months": [
+      "2026-03"
+    ],
+    "targets_conflict": "주문일 기준(예외 지표)",
+    "gold_sql": "SELECT ROUND(100.0 * SUM(o.status='CANCELLED') / COUNT(*), 2) FROM orders o WHERE o.status IN ('PAID','CANCELLED') AND strftime('%Y-%m', o.ordered_at) IN ('2026-03')",
+    "gold_value": 6.45
+  },
+  {
+    "id": "Q13",
+    "question": "1분기 취소율은?",
+    "metric": "cancel_rate",
+    "months": [
+      "2026-01",
+      "2026-02",
+      "2026-03"
+    ],
+    "targets_conflict": "합계끼리 나누기",
+    "gold_sql": "SELECT ROUND(100.0 * SUM(o.status='CANCELLED') / COUNT(*), 2) FROM orders o WHERE o.status IN ('PAID','CANCELLED') AND strftime('%Y-%m', o.ordered_at) IN ('2026-01','2026-02','2026-03')",
+    "gold_value": 8.23
+  },
+  {
+    "id": "Q14",
+    "question": "1월 객단가는?",
+    "metric": "aov",
+    "months": [
+      "2026-01"
+    ],
+    "targets_conflict": "분자 매출 정의, 분모 주문 수 정의",
+    "gold_sql": "SELECT ROUND(1.0 * (SELECT SUM(o.items_ex_vat) - COALESCE(SUM(CASE r.refund_type WHEN 'FULL' THEN o.items_ex_vat ELSE r.refund_amount * 100 / 110 END), 0) FROM orders o LEFT JOIN refunds r USING (order_id) WHERE o.paid_at IS NOT NULL AND strftime('%Y-%m', o.paid_at) IN ('2026-01')) / (SELECT COUNT(*) FROM orders o WHERE o.status='PAID' AND o.paid_at IS NOT NULL AND strftime('%Y-%m', o.paid_at) IN ('2026-01')))",
+    "gold_value": 156403.0
+  },
+  {
+    "id": "Q15",
+    "question": "2월 평균 주문 금액",
+    "metric": "aov",
+    "months": [
+      "2026-02"
+    ],
+    "targets_conflict": "부가세·배송비 포함 여부",
+    "gold_sql": "SELECT ROUND(1.0 * (SELECT SUM(o.items_ex_vat) - COALESCE(SUM(CASE r.refund_type WHEN 'FULL' THEN o.items_ex_vat ELSE r.refund_amount * 100 / 110 END), 0) FROM orders o LEFT JOIN refunds r USING (order_id) WHERE o.paid_at IS NOT NULL AND strftime('%Y-%m', o.paid_at) IN ('2026-02')) / (SELECT COUNT(*) FROM orders o WHERE o.status='PAID' AND o.paid_at IS NOT NULL AND strftime('%Y-%m', o.paid_at) IN ('2026-02')))",
+    "gold_value": 141760.0
+  },
+  {
+    "id": "Q16",
+    "question": "3월 객단가 알려줘",
+    "metric": "aov",
+    "months": [
+      "2026-03"
+    ],
+    "targets_conflict": "취소 주문의 분모 포함 여부",
+    "gold_sql": "SELECT ROUND(1.0 * (SELECT SUM(o.items_ex_vat) - COALESCE(SUM(CASE r.refund_type WHEN 'FULL' THEN o.items_ex_vat ELSE r.refund_amount * 100 / 110 END), 0) FROM orders o LEFT JOIN refunds r USING (order_id) WHERE o.paid_at IS NOT NULL AND strftime('%Y-%m', o.paid_at) IN ('2026-03')) / (SELECT COUNT(*) FROM orders o WHERE o.status='PAID' AND o.paid_at IS NOT NULL AND strftime('%Y-%m', o.paid_at) IN ('2026-03')))",
+    "gold_value": 135287.0
+  },
+  {
+    "id": "Q17",
+    "question": "1분기 객단가는?",
+    "metric": "aov",
+    "months": [
+      "2026-01",
+      "2026-02",
+      "2026-03"
+    ],
+    "targets_conflict": "합계끼리 나누기",
+    "gold_sql": "SELECT ROUND(1.0 * (SELECT SUM(o.items_ex_vat) - COALESCE(SUM(CASE r.refund_type WHEN 'FULL' THEN o.items_ex_vat ELSE r.refund_amount * 100 / 110 END), 0) FROM orders o LEFT JOIN refunds r USING (order_id) WHERE o.paid_at IS NOT NULL AND strftime('%Y-%m', o.paid_at) IN ('2026-01','2026-02','2026-03')) / (SELECT COUNT(*) FROM orders o WHERE o.status='PAID' AND o.paid_at IS NOT NULL AND strftime('%Y-%m', o.paid_at) IN ('2026-01','2026-02','2026-03')))",
+    "gold_value": 144439.0
+  },
+  {
+    "id": "Q18",
+    "question": "1월 결제 건수는?",
+    "metric": "paid_orders",
+    "months": [
+      "2026-01"
+    ],
+    "targets_conflict": "취소 건 포함 여부",
+    "gold_sql": "SELECT COUNT(*) FROM orders o WHERE o.status='PAID' AND o.paid_at IS NOT NULL AND strftime('%Y-%m', o.paid_at) IN ('2026-01')",
+    "gold_value": 149
+  },
+  {
+    "id": "Q19",
+    "question": "2월 주문 몇 건이야?",
+    "metric": "paid_orders",
+    "months": [
+      "2026-02"
+    ],
+    "targets_conflict": "주문 vs 결제 vs 유효, PENDING",
+    "gold_sql": "SELECT COUNT(*) FROM orders o WHERE o.status='PAID' AND o.paid_at IS NOT NULL AND strftime('%Y-%m', o.paid_at) IN ('2026-02')",
+    "gold_value": 129
+  },
+  {
+    "id": "Q20",
+    "question": "3월에 실제로 팔린 주문 수",
+    "metric": "paid_orders",
+    "months": [
+      "2026-03"
+    ],
+    "targets_conflict": "'실제로'의 의미(취소 제외)",
+    "gold_sql": "SELECT COUNT(*) FROM orders o WHERE o.status='PAID' AND o.paid_at IS NOT NULL AND strftime('%Y-%m', o.paid_at) IN ('2026-03')",
+    "gold_value": 157
+  }
+]

@@ -1,0 +1,54 @@
+{
+  "version": "v2",
+  "domain": "온라인 주문 (합성 데이터, 사례 A)",
+  "note": "v1에서 관찰된 실패 두 가지(07 문서 5절 2·3번)에만 근거해 고친 사전. 자연어 정의와 컬럼 대응만 추가하고 SQL은 담지 않는다. 취소율 항목은 일부러 v1과 같게 두어 '사전 문구 변경의 부작용 없음'을 확인하는 대조군으로 쓴다.",
+  "v2_changes": [
+    {"metric": "net_revenue", "finding": "5-2", "change": "'결제 완료'는 paid_at 값이 있다는 뜻이며 status와 무관함을 명시"},
+    {"metric": "paid_orders", "finding": "5-3", "change": "수식어 없는 '주문 수'가 이 지표임을 명시, 컬럼 대응(status와 paid_at) 추가"},
+    {"metric": "aov", "finding": "5-2, 5-3", "change": "분자·분모가 위 두 정의를 따름을 컬럼 대응과 함께 명시"},
+    {"metric": "refund_rate", "finding": "5-2", "change": "분자·분모 모두 paid_at 기준이며 status로 거르지 않음, refund_type별 환산을 컬럼 이름으로 명시"},
+    {"metric": "cancel_rate", "finding": "없음", "change": "변경 없음(대조군)"}
+  ],
+  "metrics": {
+    "net_revenue": {
+      "name": "매출",
+      "aliases": ["순매출", "벌어들인 돈", "매출액"],
+      "formula": "결제 완료 주문의 상품금액 합계 - 환불액(부가세 제외)",
+      "include_exclude": "부가세 제외, 배송비 제외, 결제 전(PENDING) 주문 제외, 결제 전 취소 제외. 결제 후 취소는 전액 환불로만 차감(이중 차감 금지). 전액환불은 상품금액 전부, 부분환불은 환불액÷1.1로 부가세 제외. 컬럼 대응: '결제 완료'는 orders.paid_at 에 값이 있다는 뜻이며 status 값과는 무관하다(결제 후 취소되어 status가 CANCELLED여도 paid_at이 있으면 결제 완료로 센다)",
+      "period_basis": "결제일(paid_at). 환불은 원래 결제월 매출에서 차감",
+      "unit": "원, 소수점 없음"
+    },
+    "paid_orders": {
+      "name": "유효 주문 수",
+      "aliases": ["결제 건수", "주문 수", "주문 건수", "팔린 주문 수"],
+      "formula": "결제 완료 후 취소되지 않은 주문의 건수",
+      "include_exclude": "status=PAID 이면서 paid_at 에 값이 있는 주문만 센다. 부분 환불 주문은 포함. PENDING, CANCELLED(결제 전·후 모두) 제외. 질문에서 수식어 없이 '주문 수', '주문 몇 건'이라고만 말해도 이 지표를 뜻한다(orders 테이블의 전체 행 수가 아니다)",
+      "period_basis": "결제일(paid_at)",
+      "unit": "건"
+    },
+    "aov": {
+      "name": "객단가",
+      "aliases": ["평균 주문 금액", "주문당 매출", "주문 하나당 평균 매출"],
+      "formula": "매출 ÷ 유효 주문 수",
+      "include_exclude": "분자는 위 '매출' 정의, 분모는 위 '유효 주문 수' 정의를 컬럼 대응(paid_at, status)까지 그대로 사용",
+      "period_basis": "결제일(paid_at). 기간이 여러 달이면 합계끼리 나눈다(월별 값의 평균이 아님)",
+      "unit": "원, 반올림한 정수"
+    },
+    "refund_rate": {
+      "name": "환불률",
+      "aliases": ["환불 비율", "환불 비중"],
+      "formula": "환불액(부가세 제외) ÷ 결제 완료 주문의 상품금액 합계 × 100",
+      "include_exclude": "분자는 전액환불과 부분환불 모두 포함(결제 후 취소의 전액환불 포함), 분모는 취소된 주문도 포함한 결제 완료 주문 전체. 부가세·배송비 제외. 컬럼 대응: 분자와 분모 모두 orders.paid_at 에 값이 있는 주문을 기준으로 하며 status 로 거르지 않는다. refunds.refund_type 이 FULL 이면 그 주문의 items_ex_vat 전체를, PARTIAL 이면 refund_amount÷1.1 을 환불액(부가세 제외)으로 본다",
+      "period_basis": "결제일(paid_at). 환불은 원래 결제월에 귀속. 기간이 여러 달이면 합계끼리 나눈다",
+      "unit": "%, 소수 둘째 자리 반올림"
+    },
+    "cancel_rate": {
+      "name": "취소율",
+      "aliases": ["취소 비율"],
+      "formula": "취소된 주문 수 ÷ (결제 완료 + 취소된 주문 수) × 100",
+      "include_exclude": "취소는 결제 전 취소와 결제 후 취소를 모두 센다. 결제 전(PENDING) 주문은 분자·분모에서 제외",
+      "period_basis": "주문일(ordered_at). 이 지표만 주문일을 쓴다",
+      "unit": "%, 소수 둘째 자리 반올림"
+    }
+  }
+}
