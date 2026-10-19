@@ -103,12 +103,14 @@ v1의 20개 질문은 v2를 만들 때 실패를 이미 본 질문이라 평가�
 
 | 파일 | 해시 |
 |---|---|
-| `experiment/questions_A_holdout.json` | `92506ce3ff8f9a26` |
+| `experiment/questions_A_holdout.json` | `978811e469305823` |
 | `experiment/kpi_dictionary_A.json` (v1) | `c7d92ac8cd0d79eb` |
 | `experiment/kpi_dictionary_A_v2.json` | `0280eb893bbcfbac` |
 | `experiment/evaluate_v2.py` (판정 규칙 포함, D-027 개정 후) | `0869a0581c480290` |
-| `experiment/holdout.py` | `73413d2eb33a5bda` |
-| `experiment/run_experiment.py` (프롬프트·채점·허용 오차) | `2b3182798665a4ba` |
+| `experiment/holdout.py` | `9589a8a18fc943c8` |
+| `experiment/run_experiment.py` (프롬프트·채점·허용 오차) | `0f873197cf6308b8` |
+
+> **해시 표 정정 (2026-10-19, 실험 실행 후):** 처음 적은 해시 중 3개(`questions_A_holdout.json`, `holdout.py`, `run_experiment.py`)는 Windows 작업 폴더에서 줄바꿈이 CRLF인 상태로 계산한 값이라, 저장소에 들어간 파일(LF)의 해시와 달랐습니다. 두 판의 내용은 줄바꿈만 다르고 **글자 하나 다르지 않음을 확인**했고(CRLF를 LF로 바꾸면 같은 바이트), 표를 저장소 기준 값으로 고쳤습니다. 실험 기록에 남은 질문·사전 해시는 파일 바이트가 아니라 **내용 기준**이라 영향이 없습니다.
 
 > 📘 **개념 학습 — 보류 질문은 한 번만 쓴다**
 > 시험 문제를 한 번 보고 나면 그 문제는 더 이상 새 문제가 아닙니다. 이 10개 질문은 v2를 **한 번** 평가하는 데만 쓰고, 결과를 본 뒤 사전을 다시 고쳐 같은 질문으로 재평가하지 않습니다. 더 고치고 싶으면 새 보류 질문을 따로 만듭니다.
