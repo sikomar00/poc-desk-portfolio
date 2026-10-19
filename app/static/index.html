@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PoC Desk</title>
+  <meta name="description" content="지표 정의를 확정하고, 계산하고, 정답과 대조하는 PoC 데스크">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="wrap top-inner">
+      <div>
+        <h1>PoC Desk</h1>
+        <p class="sub">질문 → 정의 확정 → 계산 → 정답 대조 → 리포트</p>
+      </div>
+      <div id="status" class="status" aria-live="polite"></div>
+    </div>
+    <nav class="wrap tabs" aria-label="화면 선택">
+      <button class="tab" data-tab="ask">질문하기</button>
+      <button class="tab" data-tab="dictionary">KPI 사전</button>
+      <button class="tab" data-tab="history">기록</button>
+    </nav>
+  </header>
+  <main class="wrap" id="view" tabindex="-1"></main>
+  <footer class="wrap foot">
+    <p>합성(가짜) 주문 데이터 2026-01 ~ 03 기준입니다. 실제 고객 데이터가 아닙니다. 이 화면은 포트폴리오용 시제품입니다.</p>
+  </footer>
+  <script src="/app.js"></script>
+</body>
+</html>
