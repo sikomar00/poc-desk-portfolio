@@ -1,0 +1,32 @@
+[질문별 정답 (5회 중)]  B1 -> B2
+  ID   구분  지표              gpt-oss-20b   nemotron-3-s   질문
+  H01  대조  net_revenue      5/5 -> 5/5     3/5 -> 4/5   1월과 2월 매출을 합치면 얼마야?
+  H02  표적  refund_rate      0/5 -> 4/5     0/5 -> 4/5   2월에 판매한 것 중 환불로 나간 비중은?
+  H03  표적  refund_rate      0/5 -> 3/5     0/5 -> 2/5   2~3월 환불률 알려줘
+  H04  표적  refund_rate      0/5 -> 4/5     0/5 -> 4/5   1~2월 환불률은 몇 %야?
+  H05  대조  cancel_rate      5/5 -> 2/5     5/5 -> 4/5   2월에 주문 취소가 몇 퍼센트나 돼?
+  H06  대조  cancel_rate      5/5 -> 3/5     4/5 -> 4/5   1~2월 취소율은?
+  H07  대조  aov              2/5 -> 4/5     4/5 -> 4/5   2~3월에 주문 하나당 평균 얼마 팔렸어?
+  H08  대조  aov              4/5 -> 4/5     4/5 -> 4/5   2월 객단가는?
+  H09  표적  paid_orders      0/5 -> 4/5     1/5 -> 5/5   1월 주문 건수가 몇 건이야?
+  H10  표적  paid_orders      0/5 -> 0/5     0/5 -> 4/5   3월에 주문 몇 건 들어왔어?
+
+[취소율(H05, H06): 사전 문구는 v1과 v2가 같았음. 오답의 값과 SQL 패턴]
+  gpt-oss-20b  B1: 정답 10/10, 오답 값/골드 [], SQL에 ordered_at 10건, paid_at 1건
+  gpt-oss-20b  B2: 정답 5/10, 오답 값/골드 [0.74, 0.95, 0.95, 0.95], SQL에 ordered_at 10건, paid_at 8건
+  nemotron-3-s B1: 정답 9/10, 오답 값/골드 [], SQL에 ordered_at 10건, paid_at 4건
+  nemotron-3-s B2: 정답 8/10, 오답 값/골드 [0.95, 1.05], SQL에 ordered_at 10건, paid_at 6건
+
+[환불률(H02~H04) B2 오답: 값/골드 비율]
+  gpt-oss-20b  오답 4건: [8.09, 8.65, 9.97] (값 없음 1)
+  nemotron-3-s 오답 5건: [8.09, 8.65, 9.97] (값 없음 2)
+
+[유효 주문 수(H09, H10) B2 오답: 값/골드 비율]
+  gpt-oss-20b  오답 6건: [1.06, 1.06, 1.06, 1.06, 1.06, 1.23]
+  nemotron-3-s 오답 1건: [1.06]
+
+[B1 vs B2 평균 응답 시간(초), 종료 사유]
+  gpt-oss-20b  B1: 40초, {'stop': 50}, 상태 {'ok': 47, 'sql_error': 3}
+  gpt-oss-20b  B2: 38초, {'stop': 50}, 상태 {'ok': 47, 'sql_error': 2, 'not_numeric': 1}
+  nemotron-3-s B1: 30초, {'stop': 50}, 상태 {'ok': 48, 'blocked:not_select': 2}
+  nemotron-3-s B2: 28초, {'stop': 50}, 상태 {'ok': 47, 'blocked:forbidden_keyword': 2, 'sql_error': 1}
