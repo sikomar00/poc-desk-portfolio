@@ -1,0 +1,12 @@
+# 실데이터(개인 거래내역)는 절대 공개 저장소에 올리지 않는다
+data/private/
+*.csv
+*.xlsx
+*.xls
+# 합성 샘플 DB는 스크립트로 재생성 가능하므로 선택적으로 제외해도 된다
+# data/poc_desk_sample.db
+# 비밀 키
+.env
+*.key
+__pycache__/
+experiment/runs_mock/
