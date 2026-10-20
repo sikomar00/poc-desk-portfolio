@@ -30,6 +30,10 @@ python app/server.py
 | 해결 방향 | 요구 한 줄 → 모호함 질문 → KPI 정의서 확정 → SQL 생성·실행 → 합계 검증 → PoC 리포트 |
 | 두 공고 연결 | AI-BI: KPI 정의·Text-to-SQL·RAG / R&D: PoC 설계·검증·문서화 |
 
+## 작업 의도 문서
+
+**[Intent.md](Intent.md)** — 작업마다 "문제 · 기대 결과 · 영향 범위 · 제약 · 열린 질문"을 먼저 쓰고, IA·UJ·PRD·ERD를 ID로 연결해 개발합니다. 지금 하고 있는 작업과 끝난 작업의 의도가 여기에 있습니다. 작업 규칙은 [CLAUDE.md](CLAUDE.md).
+
 ## 문서 읽는 순서
 
 | 순서 | 문서 | 답하는 질문 | 상태 |
