@@ -190,6 +190,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(engine.run_query(str(body.get("question") or "")[:300], body.get("metric_key"),
                                                    list(body.get("months") or []), body.get("mode") or "reference",
                                                    body.get("model"), user["id"] if user else None))
+            if path == "/api/compare":  # 로그인 없이도 가능(합성 데이터). 기록에는 남기지 않는다
+                return self._json(engine.compare_definitions(body.get("metric_key"), list(body.get("months") or [])))
             if path == "/api/report":
                 user = self._user()
                 if engine.BACKEND == "supabase" and not user:

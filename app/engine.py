@@ -302,6 +302,30 @@ def _fmt_value(key, v, unit=None):
     return f"{num}{unit}"
 
 
+def _sqlite_rows(sql):
+    import sqlite3
+    con = sqlite3.connect(f"file:{R.DB}?mode=ro", uri=True)
+    try:
+        return con.execute(sql).fetchall()
+    finally:
+        con.close()
+
+
+def compare_definitions(metric_key, months):
+    """같은 질문을 정의별로 계산해 나란히 돌려준다(정의 충돌을 눈으로 보게 하는 기능). 지금은 '매출'만 정의 변형이 있다."""
+    if metric_key != "net_revenue":
+        raise ValueError("정의별 비교 자료는 지금은 '매출' 지표에만 있습니다.")
+    months = sorted({m for m in months if isinstance(m, str) and m in VALID_MONTHS})
+    if not months:
+        raise ValueError("데이터가 있는 기간(2026년 1~3월)을 하나 이상 선택해 주세요.")
+    import compare
+    res = compare.compare(months, db.query_rows, postgres=True) if BACKEND == "supabase" else compare.compare(months, _sqlite_rows)
+    ledger = _ledger_total(months)
+    res["ledger_total"] = ledger
+    res["official_matches_ledger"] = ledger is not None and abs(res["official_total"] - ledger) < 0.5  # 원장과 정확히 일치해야 공식 정의
+    return res
+
+
 def run_query(question, metric_key, months, mode="reference", model=None, user_id=None):
     """F4~F6: 정의된 지표만 실행한다. 사전에 없는 지표는 거부한다."""
     metric = get_metric(metric_key)

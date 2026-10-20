@@ -159,6 +159,11 @@ def execute_readonly(sql):
     return float(v), "ok"
 
 
+def query_rows(sql):
+    """미리 정해 둔(신뢰하는) 읽기 전용 SQL의 결과 행 전체. 모델이 만든 SQL에는 쓰지 않는다."""
+    return _reader.run(sql)
+
+
 def schema_text():
     """LLM에 줄 테이블 구조(demo 스키마). 원장(app)은 다른 스키마라 처음부터 보이지 않고, 주석도 없다."""
     rows = _reader.run("select table_name, column_name, data_type from information_schema.columns "
