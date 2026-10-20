@@ -160,10 +160,44 @@ create table app.query_runs (
 - **돌이킬 수 없는 지점:** T6(가계부가 클라우드에 올라감). 그 전에 A계열이 모두 통과해야 합니다.
 - **되돌리기:** SQLite 파일은 T8이 끝나고 대조가 통과할 때까지 유일한 기준으로 유지합니다(13 문서 6절).
 
+## 진행 기록 (2026-10-20)
+T1~T3을 Supabase CLI(`npx supabase` 2.121.0)로 진행했습니다. 데이터는 아직 넣지 않았습니다(T4 이후).
+
+| 티켓 | 상태 | 내용 |
+|---|---|---|
+| T1 | 완료(일부) | 프로젝트 `realdefinition` 생성(서울 `ap-northeast-2`, 기존 프로젝트와 별개). **무료 플랜 제약(일시정지·백업·용량)은 아직 확인하지 않았다** — 13 문서 R2는 열린 상태 |
+| T2 | 완료 | `supabase/migrations/…0001_schemas_and_tables.sql` 적용. 로그인 반영(`app.profiles`, `owner_id`·`user_id` FK)과 2절 DDL의 차이는 이 파일이 기준 |
+| T3 | 완료 | `…0002_roles_grants_rls.sql`, `…0003_admin_can_set_roles.sql` 적용. API 노출 스키마는 `public`, `graphql_public`, `demo` |
+
+**권한 테스트 결과** (4절 기준, 전부 원격 DB에서 실행):
+| 테스트 | 결과 |
+|---|---|
+| A1 `poc_reader_demo` → `app.ledger` | 거부(`permission denied for schema app`) |
+| A2 `poc_reader_demo` → `personal.transactions` | 거부 |
+| A3 `poc_reader_personal` 쓰기 | 거부(읽기 전용 트랜잭션 + 권한 없음) |
+| A4 anon 키로 REST | `demo` 읽기만 200, `personal`·`app`은 406(노출 안 됨), `demo` 쓰기는 401 |
+| A5 `pg_sleep(10)` | 5초 제한으로 취소 |
+| A6 `app_service` UPDATE/DELETE | 거부(SELECT·INSERT만 가능) |
+| A7 RLS 소유자 정책 | `app.owner_id` 미지정 0행, 맞는 값 1행, 다른 값 0행 (롤백되는 트랜잭션 안에서 확인, 흔적 없음) |
+
+**알게 된 것:**
+- `SET ROLE`로 흉내 내면 역할별 기본 설정(읽기 전용, 5초 제한)이 적용되지 않는다. 그 설정은 **실제로 로그인할 때만** 붙으므로, 역할 비밀번호를 설정해 풀러로 직접 로그인해 확인했다.
+- 역할 비밀번호와 DB 비밀번호는 `.env`(git 제외)에만 있고 마이그레이션 파일에는 없다.
+- `app.owner_id` RLS는 보조 방어선이다. 서버와 같은 역할로 접속한 쪽이 이 값을 직접 지정할 수 있어서, 막아 주는 것은 "값을 안 지정한 접속은 0행"까지다.
+- Auth 설정: 이메일 확인 끔(`mailer_autoconfirm = true`), 비밀번호 최소 8자, 사이트 URL `http://127.0.0.1:8765`. **가입은 닫았다**(아래 참고).
+
+**T4 중 `demo` 적재 (같은 날 완료):** `data/export_demo_sql.py`가 SQLite에서 SQL을 만들고 `supabase db query --linked -f`로 적용했다. D1 행 수(고객 15, 상품 8, 주문 500, 항목 1,017, 환불 52)와 D2 결제월별 주문 수·상품금액·총액이 로컬과 **정확히 일치**했고, 두 번 적용해도 행 수가 그대로였다(D4). anon 키로 REST에서 `demo.orders`를 읽을 수 있는 것도 확인했다. 가계부와 `app.kpi_definitions`·`app.ledger`는 아직 비어 있다(T5~T7).
+
+
+**본인 계정 등록과 가입 닫기:** 대시보드에서 만든 계정(1개)을 `app.profiles`에 등록했고(`display_name`은 이메일 앞부분), `enable_signup = false`를 적용했다. 확인: 설정 조회에서 `disable_signup: true`, 이메일 확인은 계속 꺼짐(`mailer_autoconfirm: true`), 낯선 이메일로 가입을 시도하면 422 `signup_disabled`로 거절되고 계정 수는 1개 그대로였다. [가정] 앞으로 계정이 더 필요하면 대시보드에서 직접 만든다.
+
 ## 열린 질문
 - T5의 가명 처리 규칙(가맹점 원문을 어디까지 가릴지).
 - 서버를 외부에 배포할 계획이 생기면 S1 재검토.
 
 ## 변경 이력
+- 2026-10-20 본인 계정 등록·가입 닫기 결과 추가
+- 2026-10-20 demo 적재와 대조 결과 추가
+- 2026-10-20 T1~T3 진행 기록과 권한 테스트 결과 추가
 - 2026-10-20 S1·S2를 D-035로 대체 표시(로그인), DDL 갱신은 T2로 이월
 - 2026-10-20 초안 작성 (스펙 결정 S1~S5, DDL 초안, 티켓 T1~T8)
