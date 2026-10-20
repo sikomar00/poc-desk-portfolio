@@ -8,6 +8,7 @@
   :root { --bg:#f6f7f9; --card:#fff; --ink:#1c2230; --sub:#5b6577; --line:#dfe3ea; --ok:#12805c; --okbg:#e3f5ee; --bad:#b42318; --badbg:#fdeceb; --wait:#8a6100; --waitbg:#fff4d6; --acc:#2456d6; }
   @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#12151b; --card:#1b2029; --ink:#e8ecf3; --sub:#9aa5b8; --line:#2c3442; --ok:#4cc79b; --okbg:#123127; --bad:#ff8a80; --badbg:#3a1a18; --wait:#f0c04d; --waitbg:#3a2f10; --acc:#7da2ff; } }
   :root[data-theme="dark"] { --bg:#12151b; --card:#1b2029; --ink:#e8ecf3; --sub:#9aa5b8; --line:#2c3442; --ok:#4cc79b; --okbg:#123127; --bad:#ff8a80; --badbg:#3a1a18; --wait:#f0c04d; --waitbg:#3a2f10; --acc:#7da2ff; }
+  [hidden] { display:none !important; }
   * { box-sizing:border-box; }
   body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.55 system-ui,"Segoe UI","Malgun Gothic",sans-serif; }
   main { max-width:920px; margin:0 auto; padding:24px 16px 64px; }
@@ -30,6 +31,24 @@
   .note { font-size:13px; color:var(--sub); margin:8px 0 0; }
   .msg { margin-top:10px; padding:9px 12px; border-radius:8px; font-size:14px; font-weight:600; }
   .msg.ok { background:var(--okbg); color:var(--ok); } .msg.err { background:var(--badbg); color:var(--bad); } .msg.info { background:var(--waitbg); color:var(--wait); }
+  .card-head { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:12px; }
+  .card-head h2 { margin:0; }
+  .state { font-size:12px; font-weight:700; padding:2px 10px; border-radius:99px; background:var(--waitbg); color:var(--wait); }
+  .state.on { background:var(--okbg); color:var(--ok); } .state.reset { background:var(--waitbg); color:var(--wait); }
+  .auth-panel { max-width:420px; }
+  .field { display:block; margin-bottom:12px; }
+  .field > span { display:block; font-size:13px; font-weight:600; color:var(--sub); margin-bottom:4px; }
+  .field input { width:100%; padding:10px 12px; }
+  .pw-wrap { position:relative; }
+  .pw-wrap input { padding-right:64px; }
+  .pw-toggle { position:absolute; right:6px; top:50%; transform:translateY(-50%); padding:3px 9px; font-size:12px; color:var(--sub); }
+  button.wide { width:100%; padding:11px 14px; font-weight:600; }
+  input:focus-visible, button:focus-visible, select:focus-visible { outline:2px solid var(--acc); outline-offset:1px; }
+  .who { display:flex; align-items:center; gap:12px; margin-bottom:12px; }
+  .avatar { width:40px; height:40px; border-radius:50%; background:var(--acc); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:16px; flex:none; }
+  .who-main { min-width:0; } .who-main strong { display:block; overflow-wrap:anywhere; } .who-main span { font-size:13px; color:var(--sub); }
+  .actions { display:flex; flex-wrap:wrap; gap:8px; }
+  .hint { font-size:13px; color:var(--sub); margin:12px 0 0; }
   #summary { font-weight:600; margin-left:8px; }
 </style>
 </head>
@@ -48,27 +67,36 @@
     <div class="row">
       <button class="primary" id="runAnon">전체 점검 실행</button><span id="summary"></span>
     </div>
-    <div class="scroll"><table id="anonTable"><thead><tr><th>#</th><th>무엇을 확인하나</th><th>기대</th><th>실제</th><th>결과</th></tr></thead><tbody></tbody></table></div>
+    <div class="scroll" id="anonWrap" hidden><table id="anonTable"><thead><tr><th>#</th><th>무엇을 확인하나</th><th>기대</th><th>실제</th><th>결과</th></tr></thead><tbody></tbody></table></div>
     <p class="note">“거부되어야 정상”인 항목은 거부될 때 <span class="badge pass">통과</span>입니다.</p>
   </section>
 
-  <section>
-    <h2>2. 로그인 (본인 계정)</h2>
-    <div class="row" id="loginForm">
-      <input id="email" type="email" placeholder="이메일" autocomplete="username">
-      <input id="password" type="password" placeholder="비밀번호" autocomplete="current-password">
-      <button class="primary" id="loginBtn">로그인</button>
+  <section id="authCard">
+    <div class="card-head"><h2>2. 로그인 (본인 계정)</h2><span class="state" id="authState">로그아웃 상태</span></div>
+
+    <form class="auth-panel" id="loginForm" autocomplete="on">
+      <label class="field"><span>이메일</span><input id="email" type="email" placeholder="you@example.com" autocomplete="username" required></label>
+      <label class="field"><span>비밀번호</span>
+        <div class="pw-wrap"><input id="password" type="password" placeholder="비밀번호" autocomplete="current-password" required><button type="button" class="pw-toggle" data-for="password">보기</button></div>
+      </label>
+      <button class="primary wide" id="loginBtn" type="submit">로그인</button>
+    </form>
+
+    <div class="auth-panel" id="sessionBox" hidden>
+      <div class="who"><div class="avatar" id="avatar">?</div><div class="who-main"><strong id="whoami"></strong><span id="sessionLeft"></span></div></div>
+      <div class="actions"><button class="primary" id="runAuthBtn" type="button">로그인 상태 점검</button><button id="logoutBtn" type="button">로그아웃</button></div>
     </div>
-    <div class="row" id="sessionBox" hidden>
-      <span id="whoami"></span><button id="logoutBtn">로그아웃</button><button id="runAuthBtn" class="primary">로그인 상태 점검</button>
-    </div>
-    <div class="row" id="resetBox" hidden>
-      <input id="newPw" type="password" placeholder="새 비밀번호 (8자 이상)" autocomplete="new-password">
-      <input id="newPw2" type="password" placeholder="새 비밀번호 확인" autocomplete="new-password">
-      <button class="primary" id="resetBtn">새 비밀번호 저장</button>
-    </div>
-    <div id="loginMsg" role="status" aria-live="polite" class="msg" hidden></div>
-    <p class="note">비밀번호는 이 브라우저에서 Supabase로만 전송되고, 저장하지 않습니다(새로고침하면 로그아웃). 채팅에 붙이지 마세요.</p>
+
+    <form class="auth-panel" id="resetBox" hidden autocomplete="off">
+      <label class="field"><span>새 비밀번호 (8자 이상)</span>
+        <div class="pw-wrap"><input id="newPw" type="password" autocomplete="new-password" required><button type="button" class="pw-toggle" data-for="newPw">보기</button></div>
+      </label>
+      <label class="field"><span>새 비밀번호 확인</span><input id="newPw2" type="password" autocomplete="new-password" required></label>
+      <button class="primary wide" id="resetBtn" type="submit">새 비밀번호 저장</button>
+    </form>
+
+    <div id="loginMsg" role="status" aria-live="polite" class="msg auth-panel" hidden></div>
+    <p class="hint" id="authHint">비밀번호는 이 브라우저에서 Supabase로만 전송되고 저장하지 않습니다(새로고침하면 로그아웃). 채팅에 붙이지 마세요. 비밀번호를 잊었다면 대시보드에서 “Send password recovery”를 보내세요.</p>
     <div class="scroll" id="authWrap" hidden><table id="authTable"><thead><tr><th>#</th><th>무엇을 확인하나</th><th>기대</th><th>실제</th><th>결과</th></tr></thead><tbody></tbody></table></div>
   </section>
 
@@ -170,7 +198,7 @@
   }
 
   function runChecks(list, tbody, summaryEl) {
-    tbody.textContent = "";
+    tbody.textContent = ""; tbody.parentNode.parentNode.hidden = false; // 결과 표는 점검을 시작할 때 보인다
     var rows = list.map(function (c, i) {
       var tr = el("tr"); var td4 = el("td"); td4.appendChild(badge("wait"));
       tr.appendChild(el("td", String(i + 1))); tr.appendChild(el("td", c.name)); tr.appendChild(el("td", c.expect)); var act = el("td", "…"); tr.appendChild(act); tr.appendChild(td4);
@@ -193,9 +221,20 @@
     runChecks(checks(false), $("anonTable").tBodies[0], $("summary")).then(function () { b.disabled = false; });
   });
 
+  var sessionTimer = null;
+  function setState(mode) { // mode: out | in | reset
+    $("loginForm").hidden = mode !== "out"; $("sessionBox").hidden = mode !== "in"; $("resetBox").hidden = mode !== "reset";
+    if (mode !== "in") $("authWrap").hidden = true; $("authHint").hidden = mode !== "out";
+    var st = $("authState"); st.className = "state" + (mode === "in" ? " on" : mode === "reset" ? " reset" : "");
+    st.textContent = mode === "in" ? "로그인됨" : mode === "reset" ? "비밀번호 재설정 중" : "로그아웃 상태";
+  }
   function setSession(on, email, exp) {
-    $("loginForm").hidden = on; $("sessionBox").hidden = !on; $("authWrap").hidden = !on;
-    if (on) { var left = Math.max(0, Math.round((exp * 1000 - Date.now()) / 60000)); $("whoami").textContent = email + " 로그인됨 (세션 약 " + left + "분 남음)"; }
+    clearInterval(sessionTimer);
+    if (!on) { setState("out"); return; }
+    setState("in");
+    $("avatar").textContent = (email || "?").charAt(0).toUpperCase(); $("whoami").textContent = email;
+    function tick() { var sec = Math.max(0, Math.round(exp - Date.now() / 1000)); $("sessionLeft").textContent = sec > 0 ? "세션 " + Math.floor(sec / 60) + "분 " + (sec % 60) + "초 남음" : "세션이 만료되었습니다. 다시 로그인하세요."; }
+    tick(); sessionTimer = setInterval(tick, 1000);
   }
   function showMsg(kind, text) { var m = $("loginMsg"); m.hidden = false; m.className = "msg " + kind; m.textContent = text; }
   function reasonText(r, j) {
@@ -216,7 +255,7 @@
         if (!x.r.ok) { showMsg("err", reasonText(x.r, x.j)); return; }
         token = x.j.access_token; var payload = JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
         setSession(true, payload.email, payload.exp);
-        showMsg("ok", "로그인 성공: " + payload.email + " — 아래 “로그인 상태 점검”을 눌러 보세요.");
+        showMsg("ok", "로그인되었습니다. “로그인 상태 점검”을 눌러 보세요.");
       }).catch(function (e) { showMsg("err", "서버에 연결하지 못했습니다(네트워크 문제): " + e.message); }).then(function () { b.disabled = false; });
   }
   // 비밀번호 재설정 링크로 들어온 경우: 주소의 # 뒤에 임시 토큰이 실려 온다
@@ -236,11 +275,12 @@
         return;
       }
       recoveryToken = tok;
-      $("loginForm").hidden = true; $("resetBox").hidden = false;
+      setState("reset");
       showMsg("info", "본인 확인이 끝났습니다. 새 비밀번호를 입력하고 저장하세요.");
     }
   })();
-  $("resetBtn").addEventListener("click", function () {
+  $("resetBox").addEventListener("submit", function (ev) {
+    ev.preventDefault();
     var a = $("newPw").value, b2 = $("newPw2").value;
     if (a.length < 8) { showMsg("err", "비밀번호는 8자 이상이어야 합니다."); return; }
     if (a !== b2) { showMsg("err", "두 입력이 서로 다릅니다. 다시 확인하세요."); return; }
@@ -249,14 +289,16 @@
       .then(function (r) { return r.json().then(function (j) { return { r: r, j: j }; }); })
       .then(function (x) {
         $("newPw").value = ""; $("newPw2").value = "";
-        if (x.r.ok) { recoveryToken = null; $("resetBox").hidden = true; $("loginForm").hidden = false; showMsg("ok", "비밀번호를 변경했습니다. 이제 위 칸에 이메일과 새 비밀번호로 로그인하세요."); return; }
+        if (x.r.ok) { recoveryToken = null; setState("out"); showMsg("ok", "비밀번호를 변경했습니다. 이제 위 칸에 이메일과 새 비밀번호로 로그인하세요."); return; }
         var code = x.j.error_code || "";
         showMsg("err", code === "same_password" ? "이전과 같은 비밀번호입니다. 다른 비밀번호를 입력하세요." : code === "weak_password" ? "너무 쉬운 비밀번호입니다: " + (x.j.msg || "") : "저장 실패 (HTTP " + x.r.status + (code ? ", " + code : "") + "): " + (x.j.msg || ""));
       }).catch(function (e) { showMsg("err", "서버에 연결하지 못했습니다: " + e.message); }).then(function () { btn.disabled = false; });
   });
-  $("loginBtn").addEventListener("click", doLogin);
-  ["email", "password"].forEach(function (id) { $(id).addEventListener("keydown", function (e) { if (e.key === "Enter") doLogin(); }); });
-  $("logoutBtn").addEventListener("click", function () { token = null; setSession(false); $("authTable").tBodies[0].textContent = ""; showMsg("info", "로그아웃했습니다."); });
+  $("loginForm").addEventListener("submit", function (ev) { ev.preventDefault(); doLogin(); });
+  Array.prototype.forEach.call(document.querySelectorAll(".pw-toggle"), function (t) {
+    t.addEventListener("click", function () { var i = $(t.getAttribute("data-for")); var show = i.type === "password"; i.type = show ? "text" : "password"; t.textContent = show ? "숨기기" : "보기"; });
+  });
+  $("logoutBtn").addEventListener("click", function () { token = null; setSession(false); $("authTable").tBodies[0].textContent = ""; $("authWrap").hidden = true; showMsg("info", "로그아웃했습니다."); });
   $("runAuthBtn").addEventListener("click", function () {
     var b = $("runAuthBtn"); b.disabled = true;
     runChecks(checks(true), $("authTable").tBodies[0]).then(function () { b.disabled = false; });
