@@ -189,13 +189,14 @@ T1~T3을 Supabase CLI(`npx supabase` 2.121.0)로 진행했습니다. 데이터�
 **T4 중 `demo` 적재 (같은 날 완료):** `data/export_demo_sql.py`가 SQLite에서 SQL을 만들고 `supabase db query --linked -f`로 적용했다. D1 행 수(고객 15, 상품 8, 주문 500, 항목 1,017, 환불 52)와 D2 결제월별 주문 수·상품금액·총액이 로컬과 **정확히 일치**했고, 두 번 적용해도 행 수가 그대로였다(D4). anon 키로 REST에서 `demo.orders`를 읽을 수 있는 것도 확인했다. 가계부와 `app.kpi_definitions`·`app.ledger`는 아직 비어 있다(T5~T7).
 
 
-**본인 계정 등록과 가입 닫기:** 대시보드에서 만든 계정(1개)을 `app.profiles`에 등록했고(`display_name`은 이메일 앞부분), `enable_signup = false`를 적용했다. 확인: 설정 조회에서 `disable_signup: true`, 이메일 확인은 계속 꺼짐(`mailer_autoconfirm: true`), 낯선 이메일로 가입을 시도하면 422 `signup_disabled`로 거절되고 계정 수는 1개 그대로였다. [가정] 앞으로 계정이 더 필요하면 대시보드에서 직접 만든다.
+**본인 계정 등록과 가입 닫기:** 대시보드에서 만든 계정(1개)을 `app.profiles`에 등록했고(`display_name`은 이메일 앞부분), `enable_signup = false`를 적용했다. **정정:** 이때 `auth.email.enable_signup`까지 꺼서 이메일 로그인이 막혀 있었고, QA에서 발견해 고쳤다([15 문서](15-supabase-qa-guide.md) 5절). 최종 확인: 설정 조회에서 `disable_signup: true`, 이메일 확인은 계속 꺼짐(`mailer_autoconfirm: true`), 낯선 이메일로 가입을 시도하면 422 `signup_disabled`로 거절되고 계정 수는 1개 그대로였다. [가정] 앞으로 계정이 더 필요하면 대시보드에서 직접 만든다.
 
 ## 열린 질문
 - T5의 가명 처리 규칙(가맹점 원문을 어디까지 가릴지).
 - 서버를 외부에 배포할 계획이 생기면 S1 재검토.
 
 ## 변경 이력
+- 2026-10-20 가입 닫기 정정(이메일 로그인 복구), QA 가이드 링크
 - 2026-10-20 본인 계정 등록·가입 닫기 결과 추가
 - 2026-10-20 demo 적재와 대조 결과 추가
 - 2026-10-20 T1~T3 진행 기록과 권한 테스트 결과 추가
