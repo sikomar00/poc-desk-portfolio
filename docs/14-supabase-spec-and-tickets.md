@@ -212,7 +212,7 @@ T1~T3을 Supabase CLI(`npx supabase` 2.121.0)로 진행했습니다. 데이터�
 
 **한계 (솔직하게)**
 - **사용자 정의 지표는 아직 파일**(`app/data/custom_kpis.json`)에 저장한다. DB 이전은 T7의 남은 부분이다. 그래서 사용자 정의 지표를 쓴 실행 기록의 `definition_id`는 비어 있다.
-- **AI 모드는 Postgres에서 실제 모델로 시험하지 못했다**(API 키 없음). 프롬프트는 PostgreSQL 문법 안내로 바꿨고, 모델이 SQLite 문법(`strftime` 등)을 쓰면 오류로 기록된다.
+- **AI 모드는 실제 모델로 소규모만 시험했다**: `gpt-oss-20b` 로컬 5회·공개 주소 1회(10~31초), `nemotron-3-super-120b` 1회(44초), 모두 대사 통과. 프롬프트는 PostgreSQL 문법 안내를 넣었고 모델이 PostgreSQL 문법의 SQL을 냈다. 표본이 작아 정확도 주장은 하지 않는다.
 - 가계부(`personal`)는 아직 앱에 연결하지 않았다(T5·T6 선행).
 - 서버가 로그인 토큰 검증마다 Supabase Auth를 한 번 호출한다(30초 캐시). Supabase가 느리면 로그인 요청이 느려진다.
 
