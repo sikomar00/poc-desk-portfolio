@@ -1,7 +1,7 @@
 # 포트폴리오 요약 — "같은 질문, 다른 숫자" 문제를 정의하고 검증하기
 
 > 모호한 요구를 검증 가능한 과제로 바꾸고, 만들어 보고, 숫자와 기록으로 증명한 프로젝트
-> 저장소: [sikomar00/realDefinition](https://github.com/sikomar00/realDefinition) (웹앱 이름: PoC Desk)
+> 저장소: [sikomar00/realDefinition](https://github.com/sikomar00/realDefinition)
 > 지원: 세일링스톤 **AI-BI 엔지니어** / **신기술 R&D 및 PoC 엔지니어** (인턴 6기)
 > 작성일: 2026-10-19 · 전체 근거 문서 목차는 [README](README.md)
 
@@ -54,7 +54,7 @@
 |---|---|---|
 | 신기술·오픈소스 조사와 적용 가능성 검토 | NVIDIA build 모델 22개를 실제 호출해 4개만 사용 가능함을 확인, 공식 문서로 호출 조건 확인 ([06](docs/06-experiment-design.md) 11~12절) | ● |
 | 과제 정의와 PoC 설계 | 문제 정의서, PRD, 성공 기준 사전 고정 실험 설계 | ● |
-| 프로토타입·핵심 기능 개발 | Python 실행기(호출·SQL 추출·안전 검사·채점·기록), 평가기, **PoC Desk 로컬 웹앱**(질문 → 정의 확인 → 계산 → 정답 대조 → 리포트, 테스트: 앱 31개, 실험 코드 32개) | ● 단, 앱의 AI 모드는 실제 모델 호출 미검증 ([12](docs/12-poc-desk-app.md)) |
+| 프로토타입·핵심 기능 개발 | Python 실행기(호출·SQL 추출·안전 검사·채점·기록), 평가기, **realDefinition 로컬 웹앱**(질문 → 정의 확인 → 계산 → 정답 대조 → 리포트, 테스트: 앱 31개, 실험 코드 32개) | ● 단, 앱의 AI 모드는 실제 모델 호출 미검증 ([12](docs/12-poc-desk-app.md)) |
 | API·DB·외부 서비스 연동 | OpenAI 호환 LLM API, SQLite, 키는 환경 변수 | ● |
 | PoC 검증과 개선점 도출 | 두 번의 실험, 원인 분석, v2 개선과 재평가 | ● |
 | 문서화 | 문서 10종 이상, 결정 기록, 용어집 | ● |
@@ -88,7 +88,7 @@
 
 | 폴더 | 내용 |
 |---|---|
-| `app/` | PoC Desk 로컬 웹앱 (`python app/server.py`, 추가 설치 없음) |
+| `app/` | realDefinition 로컬 웹앱 (`python app/server.py`, 추가 설치 없음) |
 | `docs/` | 문제 정의 → PRD → 여정 → 데이터 → 실험 설계·결과 → 회고 |
 | `data/` | 합성 주문 DB 생성기와 검증 스크립트, 가계부 CSV 점검 스크립트 (실데이터는 `data/private/`, 공개 제외) |
 | `experiment/` | KPI 사전, 질문과 골드 답, 실행기·평가기, 실행 기록 |

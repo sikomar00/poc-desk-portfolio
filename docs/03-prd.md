@@ -1,12 +1,12 @@
 ---
 id: 03-prd
-title: PRD — PoC Desk
+title: PRD — realDefinition
 status: draft
 updated: 2026-10-19
 depends_on: [01-problem-definition, 02-thinking-log]
 ---
 
-# PRD — PoC Desk
+# PRD — realDefinition
 
 ## 요약
 요구 한 줄을 입력하면 **모호한 부분을 되묻고 → KPI 정의서를 확정하고 → 그 정의로 SQL을 만들어 실행하고 → 결과를 원장과 대사하고 → PoC 리포트(md)를 남기는** 웹앱. 목표는 "같은 질문에 같은 숫자, 그리고 그 숫자를 믿을 근거".
@@ -96,7 +96,7 @@ depends_on: [01-problem-definition, 02-thinking-log]
 - ~~Q4~~ 확정: 질문 20개 × 5회, 조건 A/B (D-008).
 
 ## 변경 이력
-- 2026-10-19 PoC Desk 앱 구현. 기능별 구현 상태는 [12 문서](12-poc-desk-app.md)의 대응표 참조
+- 2026-10-19 realDefinition 앱 구현. 기능별 구현 상태는 [12 문서](12-poc-desk-app.md)의 대응표 참조
 - 2026-10-19 F6 대사 허용 오차 0의 근거를 실험으로 확인(07 문서 6절, D-024). 정답 출처가 없는 지표의 검증은 별도 과제
 - 2026-10-19 F8 일치율 실험의 상세 설계는 06 문서로 이관. 사례 B 지표는 `소비지출`/`총유출`로 분리(D-016)
 - 2026-10-19 초안 작성

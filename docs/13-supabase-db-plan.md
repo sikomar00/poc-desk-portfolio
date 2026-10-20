@@ -196,7 +196,7 @@ erDiagram
 ## 5. 접근 경로와 권한
 ```mermaid
 flowchart LR
-    B[브라우저] -->|로그인 확인| S[PoC Desk 서버]
+    B[브라우저] -->|로그인 확인| S[realDefinition 서버]
     V[공개 데모 방문자] -->|anon 키| API[Supabase API]
     API -->|SELECT만| D[(demo)]
     S -->|poc_reader_demo| D

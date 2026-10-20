@@ -1,12 +1,12 @@
 ---
 id: 12-poc-desk-app
-title: PoC Desk 앱 — 질문에서 검증된 숫자까지 (로컬 웹앱 시제품)
+title: realDefinition 앱 — 질문에서 검증된 숫자까지 (로컬 웹앱 시제품)
 status: draft
 updated: 2026-10-19
 depends_on: [03-prd, 04-journey-and-flow, 09-experiment-v2-results]
 ---
 
-# PoC Desk 앱
+# realDefinition 앱
 
 ## 요약
 [04 문서](04-journey-and-flow.md)에서 설계한 크리티컬 여정(질문 → 정의 확인 → 계산 → 정답 대조 → 리포트)을 **실제로 눌러 볼 수 있게** 만든 로컬 웹앱 시제품입니다. 추가 설치 없이 Python만으로 실행되고, 합성 데이터에서만 동작합니다.

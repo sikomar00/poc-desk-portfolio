@@ -79,7 +79,7 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-  R[PoC Desk] --> A[접수]
+  R[realDefinition] --> A[접수]
   R --> B[KPI 사전]
   R --> C[실행·검증]
   R --> D[리포트]

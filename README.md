@@ -7,7 +7,7 @@ updated: 2026-10-19
 
 # realDefinition — 문제 정의 프레임워크 포트폴리오
 
-> 저장소: [sikomar00/realDefinition](https://github.com/sikomar00/realDefinition) · 이 저장소에서 만든 로컬 웹앱의 이름이 **PoC Desk**입니다.
+> 저장소: [sikomar00/realDefinition](https://github.com/sikomar00/realDefinition)
 
 > **처음 보시는 분은 [PORTFOLIO.md](PORTFOLIO.md)(1~2분 요약)부터 읽으세요.** 아래는 전체 문서 목차입니다.
 
@@ -46,11 +46,11 @@ python app/server.py
 | 9 | [후속 실험 결과](docs/09-experiment-v2-results.md) | v2는 나아졌나? 부작용은? 검증 방법은 새 질문에서도 통하나? | draft |
 | 10 | [회고](docs/10-retrospective.md) | 무엇을 배웠고, 무엇을 틀렸고, 다음에 무엇을 하나? | draft |
 | 11 | [면접 준비 노트](docs/11-interview-prep.md) | 예상 질문에 어떤 근거로 답하나? 내 말로 설명할 수 있나? | draft |
-| 12 | [PoC Desk 앱](docs/12-poc-desk-app.md) | 설계한 흐름을 눌러 볼 수 있는 화면은? 무엇을 확인했고 무엇은 못 했나? | draft |
+| 12 | [realDefinition 앱](docs/12-poc-desk-app.md) | 설계한 흐름을 눌러 볼 수 있는 화면은? 무엇을 확인했고 무엇은 못 했나? | draft |
 | 13 | [Supabase DB 기획·ERD](docs/13-supabase-db-plan.md) | 로컬 DB를 클라우드로 옮길 때 무엇을 어떻게 나누고 지키나? (이전은 아직 안 함) | draft |
 | 14 | [Supabase 구현 스펙·티켓](docs/14-supabase-spec-and-tickets.md) | 기획을 만들 수 있는 수준으로 내리면? 무엇으로 합격을 판정하나? (DDL은 미실행 초안) | draft |
 
-코드·데이터: `app/` (PoC Desk 로컬 웹앱), `data/` (합성 샘플 DB 생성기, 정의별 검증 스크립트, 가계부 CSV 점검·정의별 계산·앱 합계 대조 스크립트), `experiment/` (실험용 KPI 사전, 질문 20개와 골드 답, H3 테스트 세트). 실데이터는 `data/private/`(Git 제외).
+코드·데이터: `app/` (realDefinition 로컬 웹앱), `data/` (합성 샘플 DB 생성기, 정의별 검증 스크립트, 가계부 CSV 점검·정의별 계산·앱 합계 대조 스크립트), `experiment/` (실험용 KPI 사전, 질문 20개와 골드 답, H3 테스트 세트). 실데이터는 `data/private/`(Git 제외).
 
 
 ## 문서 규격 (모든 문서 공통)

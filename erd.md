@@ -1,12 +1,12 @@
 ---
 id: erd
-title: PoC Desk ERD (로그인 포함, Supabase 이전 목표 구조)
+title: realDefinition ERD (로그인 포함, Supabase 이전 목표 구조)
 status: draft
 updated: 2026-10-20
 depends_on: [13-supabase-db-plan, 14-supabase-spec-and-tickets]
 ---
 
-# PoC Desk ERD
+# realDefinition ERD
 
 ## 요약
 [13 문서](docs/13-supabase-db-plan.md)의 ERD에 **로그인(Supabase Auth)** 을 더한 전체 구조입니다. 이전·적용은 하지 않았고 설계만 있습니다. 이 파일이 ERD의 기준(최신)이며, 13 문서의 ERD는 로그인 도입 전 버전입니다.
@@ -170,7 +170,7 @@ erDiagram
 ```mermaid
 sequenceDiagram
     participant U as 브라우저
-    participant S as PoC Desk 서버
+    participant S as realDefinition 서버
     participant A as Supabase Auth
     participant D as Postgres
     U->>S: 이메일·비밀번호
