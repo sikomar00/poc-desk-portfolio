@@ -7,7 +7,7 @@ updated: 2026-10-20
 
 # realDefinition — 문제 정의 프레임워크 포트폴리오
 
-> 저장소: [sikomar00/realDefinition](https://github.com/sikomar00/realDefinition)
+> 저장소: [sikomar00/realDefinition](https://github.com/sikomar00/realDefinition) · **공개 데모: [realdefinition.vercel.app](https://realdefinition.vercel.app)** (합성 데이터, 설치 없이 바로 체험)
 
 > **처음 보시는 분은 [PORTFOLIO.md](PORTFOLIO.md)(1~2분 요약)부터 읽으세요.** 아래는 전체 문서 목차입니다.
 
@@ -50,6 +50,8 @@ python app/server.py
 | 13 | [Supabase DB 기획·ERD](docs/13-supabase-db-plan.md) | 로컬 DB를 클라우드로 옮길 때 무엇을 어떻게 나누고 지키나? (합성 데이터는 이전·적용 완료, 가계부는 아직) | draft |
 | 14 | [Supabase 구현 스펙·티켓](docs/14-supabase-spec-and-tickets.md) | 기획을 만들 수 있는 수준으로 내리면? 무엇으로 합격을 판정하나? (적용 결과와 점검 기록 포함) | draft |
 | 15 | [Supabase QA 가이드](docs/15-supabase-qa-guide.md) | 만든 DB가 정말 동작하나? 직접 눌러 확인하는 방법과 QA가 찾은 문제는? (점검표는 스프레드시트에 따로 기록) | draft |
+
+| 16 | [Vercel 공개 배포](docs/16-vercel-deployment.md) | 인터넷에 어떻게 올렸고, 무엇을 막았고, 배포하면서 무엇이 깨졌나? | draft |
 
 코드·데이터: `app/` (realDefinition 로컬 웹앱), `data/` (합성 샘플 DB 생성기, 정의별 검증 스크립트, 가계부 CSV 점검·정의별 계산·앱 합계 대조 스크립트), `experiment/` (실험용 KPI 사전, 질문 20개와 골드 답, H3 테스트 세트). 실데이터는 `data/private/`(Git 제외).
 

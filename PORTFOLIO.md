@@ -1,7 +1,7 @@
 # 포트폴리오 요약 — "같은 질문, 다른 숫자" 문제를 정의하고 검증하기
 
 > 모호한 요구를 검증 가능한 과제로 바꾸고, 만들어 보고, 숫자와 기록으로 증명한 프로젝트
-> 저장소: [sikomar00/realDefinition](https://github.com/sikomar00/realDefinition)
+> 저장소: [sikomar00/realDefinition](https://github.com/sikomar00/realDefinition) · **공개 데모: [realdefinition.vercel.app](https://realdefinition.vercel.app)**
 > 지원: 세일링스톤 **AI-BI 엔지니어** / **신기술 R&D 및 PoC 엔지니어** (인턴 6기)
 > 작성일: 2026-10-19 · 갱신: 2026-10-20 · 전체 근거 문서 목차는 [README](README.md)
 
@@ -30,7 +30,9 @@
 4. **실험 결과 (30초):** 2절 표의 "사전 +52~65%p → 그런데 일관성 미달로 판정 불명"과 "검증기가 아니라 선별기". 성공만 말하지 않는 것이 핵심입니다.
 5. **한계 (10초):** 6절. 합성 데이터, 질문 해석은 키워드 사전, AI 모드는 실제 모델로 앱에서 호출해 보지 못함.
 
-실행: `python app/server.py` (기본은 추가 설치 없는 로컬 SQLite). 클라우드 DB로 보여 주려면 `POC_DESK_BACKEND=supabase`로 시작합니다([12](docs/12-poc-desk-app.md)).
+**공개 데모 주소: https://realdefinition.vercel.app** (설치 없이 바로 눌러 볼 수 있음. 첫 요청은 서버를 깨우느라 약 4초 걸릴 수 있습니다).
+
+내 PC에서 실행: `python app/server.py` (기본은 추가 설치 없는 로컬 SQLite). 클라우드 DB로 보여 주려면 `POC_DESK_BACKEND=supabase`로 시작합니다([12](docs/12-poc-desk-app.md)).
 
 ## 3. 어떻게 일했나 (사고의 흐름)
 
@@ -39,7 +41,7 @@
    → 실행·채점 코드 → 실험 → 결과 분석 → 원인 해석 → 개선(v2) → 새 질문으로 재평가 → 회고
 ```
 
-- **결정 38개**(D-001~D-038)를 근거, 버린 대안, 되돌릴 조건과 함께 [결정 기록](docs/02-thinking-log.md)에 남겼습니다.
+- **결정 39개**(D-001~D-039)를 근거, 버린 대안, 되돌릴 조건과 함께 [결정 기록](docs/02-thinking-log.md)에 남겼습니다.
 - **판정 기준을 결과를 보기 전에 고정**하고(D-017, D-026), 결과가 마음에 들지 않아도 바꾸지 않았습니다(D-023, D-028).
 - 초보자 눈높이의 **개념 설명**을 문서마다 넣고 [용어집](docs/00-glossary.md)에 정리했습니다.
 
@@ -70,6 +72,7 @@
 | 과제 정의와 PoC 설계 | 문제 정의서, PRD, 성공 기준 사전 고정 실험 설계 | ● |
 | 프로토타입·핵심 기능 개발 | Python 실행기(호출·SQL 추출·안전 검사·채점·기록), 평가기, **realDefinition 로컬 웹앱**(질문 → 정의 확인 → 계산 → 정답 대조 → 리포트, 정의 비교 화면 포함, 테스트: 앱 48개, 실험 코드 32개) | ● 단, 앱의 AI 모드는 실제 모델 호출 미검증 ([12](docs/12-poc-desk-app.md)) |
 | API·DB·외부 서비스 연동 | OpenAI 호환 LLM API, SQLite에 더해 **Supabase(Postgres) 이전**: 스키마 3개 분리, 읽기 전용 DB 역할(5초 제한)과 RLS, Auth 로그인(가입 닫음), 공식 인증서 검증, 마이그레이션 파일 5개, 자동 진단 반영. 키·비밀번호는 환경 변수와 git 제외 파일 ([13](docs/13-supabase-db-plan.md), [14](docs/14-supabase-spec-and-tickets.md)) | ● 합성 데이터와 본인 1계정 기준. 가계부는 미연결 |
+| 배포·운영 | Vercel 서버리스에 같은 코드를 **공개 데모**로 배포(같은 출처 규칙, 비로그인 기록 차단, 최소 권한 비밀만 등록, 속도 제한). 배포하면서 깨진 5가지를 로그로 찾아 고침 ([16](docs/16-vercel-deployment.md)) | ● 단, Vercel 무료 플랜이고 속도 제한은 근사치 |
 | 품질 보증(QA) | 자동 테스트(앱 48 + 실험 32), 원격 DB 권한·로그인 점검, 직접 해 보는 QA 화면과 점검표 59건(통과 49 · 실패 1 · 미수행 9, 실패는 기록) ([15](docs/15-supabase-qa-guide.md)) | ● |
 | PoC 검증과 개선점 도출 | 두 번의 실험, 원인 분석, v2 개선과 재평가 | ● |
 | 문서화 | 문서 10종 이상, 결정 기록, 용어집 | ● |
