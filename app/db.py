@@ -122,6 +122,31 @@ def shutdown():
     _service.close()
 
 
+# ---- 오류 문구: 데이터베이스가 돌려주는 내부 문구(파일 이름·코드 포함)를 화면에 그대로 내보내지 않는다 ----
+_FRIENDLY = {
+    "57014": "시간 제한(5초)을 넘어 취소되었습니다. 더 작은 범위로 다시 시도하세요.",
+    "42501": "허용되지 않은 테이블에 접근하려 했습니다(권한 없음). 합성 주문 데이터 테이블만 읽을 수 있습니다.",
+    "25006": "읽기 전용입니다. 데이터를 바꾸는 SQL은 실행되지 않습니다.",
+    "42P01": "존재하지 않는 테이블입니다.",
+    "42703": "존재하지 않는 열입니다.",
+    "42883": "존재하지 않는 함수이거나 인자 형식이 맞지 않습니다(SQLite 문법을 쓴 경우 PostgreSQL 문법으로 바꿔야 합니다).",
+}
+
+
+def friendly_error(exc):
+    """pg8000 오류({'C': 코드, 'M': 메시지, ...})를 사람이 읽을 문장으로 바꾼다. 모르는 오류는 메시지 한 줄만 보여 준다."""
+    info = exc.args[0] if exc.args and isinstance(exc.args[0], dict) else None
+    if info and info.get("C"):
+        code = info["C"]
+        if code in _FRIENDLY:
+            return _FRIENDLY[code]
+        kind = "SQL 문법 오류" if code.startswith("42") else "데이터베이스 오류"
+        return f"{kind}: {info.get('M', '알 수 없음')}"
+    if isinstance(exc, (OSError, ConnectionError, TimeoutError, ssl.SSLError)) or type(exc).__name__ == "InterfaceError":
+        return "데이터베이스에 연결하지 못했습니다. 잠시 뒤 다시 시도하세요."
+    return None
+
+
 # ---- 모델·계산식 실행 (읽기 전용) ----
 def execute_readonly(sql):
     """SELECT 한 개를 실행해 숫자 하나를 돌려준다. run_experiment.execute_readonly 와 같은 모양: (값, 상태)."""

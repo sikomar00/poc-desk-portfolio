@@ -349,7 +349,7 @@ def run_query(question, metric_key, months, mode="reference", model=None, user_i
     except Exception as e:  # noqa: BLE001  화면에 이유를 보여 주고 기록한다 (F9)
         if rec["status"] == "OK":
             rec["status"] = "ERROR"
-        rec["error"] = str(e)[:300]
+        rec["error"] = ((db.friendly_error(e) if BACKEND == "supabase" else None) or str(e))[:300]
         rec["elapsed_ms"] = rec["elapsed_ms"] or _fmt_ms(t0)
         rec["overall"] = "ERROR"
     _save_run(rec, user_id)
