@@ -41,6 +41,8 @@ def load_dotenv(path=None):
 load_dotenv()
 
 
+POOLER_PORT = int(os.environ.get("SUPABASE_POOLER_PORT", "5432"))  # 서비스 역할 접속 포트. 5432 세션 모드, 6543 트랜잭션 모드(서버리스에 적합: 쉬는 연결이 DB 슬롯을 붙잡지 않는다)
+SESSION_PORT = 5432  # 읽기 전용 계산 역할은 항상 세션 모드: SET search_path 가 필요하다(역할 기본값은 풀러를 거치면 적용되지 않는 것을 확인했다)
 PERSIST = os.environ.get("POC_DESK_DB_PERSIST", "1") != "0"  # 0: 요청마다 연결을 닫는다(서버리스에서 연결이 남아 쌓이지 않게)
 
 
@@ -66,24 +68,24 @@ def _need(name):
     return v
 
 
-def _connect(role, password_var):
+def _connect(role, password_var, port):
     pg = _driver()
     ref = _need("SUPABASE_PROJECT_REF")
     host = os.environ.get("SUPABASE_POOLER_HOST", "aws-0-ap-northeast-2.pooler.supabase.com")
     ctx = ssl.create_default_context(cafile=str(CA_FILE))  # 인증서와 호스트 이름을 모두 검증
-    return pg.Connection(f"{role}.{ref}", host=host, port=5432, database="postgres",
+    return pg.Connection(f"{role}.{ref}", host=host, port=port, database="postgres",
                          password=_need(password_var), ssl_context=ctx, timeout=15)
 
 
 class _Session:
     """역할별로 연결 하나를 재사용한다(접속 0.2초를 매 질문마다 치르지 않게). 끊기면 한 번 다시 연결한다."""
 
-    def __init__(self, role, password_var, search_path=None):
-        self.role, self.password_var, self.search_path = role, password_var, search_path
+    def __init__(self, role, password_var, search_path=None, port=None):
+        self.role, self.password_var, self.search_path, self.port = role, password_var, search_path, port
         self.conn, self.lock = None, threading.Lock()
 
     def _open(self):
-        self.conn = _connect(self.role, self.password_var)
+        self.conn = _connect(self.role, self.password_var, self.port or SESSION_PORT)
         if self.search_path:
             self.conn.run(f"set search_path = {self.search_path}")
 
@@ -120,7 +122,7 @@ class _Session:
 
 
 _reader = _Session("poc_reader_demo", "POC_READER_DEMO_PASSWORD", search_path="demo")
-_service = _Session("app_service", "APP_SERVICE_PASSWORD")
+_service = _Session("app_service", "APP_SERVICE_PASSWORD", port=POOLER_PORT)
 DATASET = "demo"
 
 
