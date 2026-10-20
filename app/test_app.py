@@ -503,6 +503,21 @@ class DatabaseDialects(unittest.TestCase):
             os.environ.pop("POCDESK_T1", None)
             os.environ.pop("POCDESK_T2", None)
 
+    def test_database_errors_are_shown_in_plain_language_without_internal_details(self):
+        timeout = db.friendly_error(Exception({"S": "ERROR", "C": "57014", "M": "canceling statement", "F": "postgres.c"}))
+        denied = db.friendly_error(Exception({"C": "42501", "M": "permission denied for schema app", "F": "aclchk.c"}))
+        syntax = db.friendly_error(Exception({"C": "42601", "M": 'syntax error at or near "x"', "F": "scan.l"}))
+        other = db.friendly_error(Exception({"C": "XX000", "M": "boom"}))
+        self.assertIn("5초", timeout)
+        self.assertIn("권한", denied)
+        self.assertTrue(syntax.startswith("SQL 문법 오류:"))
+        self.assertEqual(other, "데이터베이스 오류: boom")
+        for text in (timeout, denied, syntax, other):
+            self.assertNotIn("aclchk", text)
+            self.assertNotIn("'S':", text)  # 내부 사전(dict) 모양이 그대로 나가지 않는다
+        self.assertIn("연결", db.friendly_error(ConnectionError("x")))
+        self.assertIsNone(db.friendly_error(ValueError("not a db error")))
+
     def test_token_with_wrong_shape_is_rejected_without_network(self):
         for bad in (None, "", "abc", "a.b", "a.b.c.d"):
             self.assertIsNone(db.verify_token(bad))
