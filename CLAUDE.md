@@ -18,6 +18,7 @@
 | ERD | [erd.md](erd.md) | `스키마.테이블` |
 | 결정·ADR | [docs/02-thinking-log.md](docs/02-thinking-log.md), [docs/adr/](docs/adr/) | `D-번호`, `ADR-번호` |
 | 구현 현황 | [docs/12](docs/12-poc-desk-app.md), [14](docs/14-supabase-spec-and-tickets.md), [16](docs/16-vercel-deployment.md) | — |
+| 구현 설계(라이브러리·버전·파일 역할·단계·테스트·한도) | [docs/17](docs/17-technical-design.md) | `R1`~`R7`, `G1`~`G8` |
 
 이미 정한 결정(D-번호)과 동결된 실험 파일(`experiment/` 의 실행 기록·골드·질문·사전)은 **뒤집거나 수정하지 않는다.** 뒤집으려면 새 결정으로 기록한다(D-017, D-026, D-032).
 
@@ -28,3 +29,7 @@
 - **문서:** 한국어, front-matter(`id`, `title`, `status`, `updated`, `depends_on`), 초보도 읽을 수 있게 📘 개념 학습 상자와 `[가정]` 표시를 쓴다. 문서 규격은 README 하단 참고.
 - **정직성:** 확인하지 못한 것은 "확인하지 못했다"고 쓴다. 표본이 작으면 정확도를 주장하지 않는다. 실패한 시험도 기록한다.
 - **테스트:** 코드를 바꾸면 `python app/test_app.py`, `python experiment/test_experiment.py`를 돌린다(환경변수 `POC_DESK_BACKEND`는 비워 두거나 `sqlite`).
+
+## 새 라이브러리 정책
+- 표준 라이브러리를 먼저 쓴다. 외부 라이브러리는 순수 파이썬이고 정확한 버전으로 고정(`requirements.txt`)할 수 있을 때만, **사용자 승인 후** 넣는다. 자세한 기준은 [docs/17](docs/17-technical-design.md) 4절.
+- 작업 전 Intent의 구현 계획(6~9항목)을 채우고, 끝나면 회귀 관문 G1~G8을 통과시킨다.
