@@ -389,6 +389,15 @@ class Http(unittest.TestCase):
         s, _, d = self.post("/api/definition", {"name": "Z", "formula": "a"})
         self.assertEqual(s, 400)
 
+    def test_compare_endpoint(self):
+        s, _, d = self.post("/api/compare", {"metric_key": "net_revenue", "months": ["2026-01", "2026-02", "2026-03"]})
+        self.assertEqual(s, 200)
+        res = json.loads(d)
+        self.assertEqual(len(res["rows"]), 6)
+        self.assertTrue(res["official_matches_ledger"])
+        self.assertEqual(self.post("/api/compare", {"metric_key": "aov", "months": ["2026-01"]})[0], 400)
+        self.assertEqual(self.req("POST", "/api/compare", b"{}", {"Content-Type": "application/json"})[0], 403)  # 사용자 지정 헤더 없이는 거절
+
     def test_status_does_not_leak_key(self):
         os.environ["NVIDIA_API_KEY"] = "dummy-secret-value-for-test"
         try:
@@ -397,6 +406,55 @@ class Http(unittest.TestCase):
             self.assertTrue(json.loads(d)["llm_key"])
         finally:
             del os.environ["NVIDIA_API_KEY"]
+
+
+class DefinitionComparison(Isolated):
+    """정의 비교: 같은 '매출' 질문을 정의 6가지로 계산해 나란히 보여 준다."""
+    Q = ["2026-01", "2026-02", "2026-03"]
+
+    def test_six_definitions_and_the_official_one_matches_the_ledger_exactly(self):
+        r = engine.compare_definitions("net_revenue", self.Q)
+        self.assertEqual([x["key"] for x in r["rows"]], ["V0", "V1", "V2", "V3", "V4", "V5"])
+        official = [x for x in r["rows"] if x["official"]]
+        self.assertEqual([x["key"] for x in official], ["V5"])
+        self.assertTrue(r["official_matches_ledger"])
+        self.assertEqual(round(r["official_total"]), round(r["ledger_total"]))
+        self.assertEqual(official[0]["diff"], 0)
+
+    def test_definitions_really_change_the_number(self):
+        r = engine.compare_definitions("net_revenue", self.Q)
+        totals = {x["key"]: x["total"] for x in r["rows"]}
+        self.assertGreater(totals["V0"], totals["V1"])  # 주문 총액 > 결제 완료 총액
+        self.assertGreater(totals["V1"], totals["V2"])  # 부가세·배송비를 빼면 줄어든다
+        self.assertGreater(totals["V2"], totals["V5"])  # 취소·환불을 반영하면 줄어든다
+        self.assertAlmostEqual(r["spread"], totals["V0"] - min(totals.values()), places=6)
+        self.assertGreater(r["spread_pct"], 10)  # 정의만 달라도 1할 넘게 차이 난다(합성 데이터 기준)
+
+    def test_months_are_respected_and_sum_of_months_equals_total(self):
+        one = engine.compare_definitions("net_revenue", ["2026-02"])
+        self.assertEqual(one["months"], ["2026-02"])
+        for x in one["rows"]:
+            self.assertEqual(list(x["by_month"]), ["2026-02"])
+            self.assertAlmostEqual(x["total"], x["by_month"]["2026-02"])
+        three = engine.compare_definitions("net_revenue", self.Q + ["2026-01"])  # 중복은 한 번만
+        self.assertEqual(three["months"], self.Q)
+
+    def test_only_revenue_has_variants_and_bad_input_is_rejected(self):
+        for bad in ("refund_rate", "nope", None):
+            with self.assertRaises(ValueError):
+                engine.compare_definitions(bad, self.Q)
+        with self.assertRaises(ValueError):
+            engine.compare_definitions("net_revenue", ["2026-09"])
+
+    def test_postgres_translation_only_changes_the_date_function(self):
+        import compare
+        from gold import load_variants
+        for name, sql in load_variants().items():
+            pg = compare.to_postgres(sql)
+            self.assertNotIn("strftime", pg, name)
+            self.assertIn("to_char(", pg, name)
+            self.assertEqual(sql.count("strftime("), pg.count("to_char("), name)
+            self.assertEqual(sql.replace("strftime('%Y-%m', ", "").count("FROM"), pg.replace("to_char(", "").count("FROM"), name)
 
 
 class SupabaseBackend(unittest.TestCase):
