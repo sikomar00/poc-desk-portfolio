@@ -66,7 +66,8 @@ function renderStatus() {
   el.replaceChildren(
     h("span", { class: "badge neutral" }, isCloud() ? "데이터: Supabase(서울)" : "데이터: 로컬 SQLite"),
     h("span", { class: "badge neutral" }, "데이터 " + S.status.data_months.map(monthLabel).join("·")),
-    h("span", { class: "badge " + (S.status.llm_key ? "on" : "off") }, S.status.llm_key ? "AI 모드 사용 가능" : "AI 키 없음 (계산식 모드만)"));
+    h("span", { class: "badge " + (S.status.llm_key ? "on" : S.status.ai_login_required ? "neutral" : "off") },
+      S.status.llm_key ? "AI 모드 사용 가능" : S.status.ai_login_required ? "AI 모드: 로그인한 본인만" : "AI 키 없음 (계산식 모드만)"));
 }
 // ---- 계정 (Supabase 모드에서만): 로그인은 브라우저가 Supabase Auth 에 직접 하고, 토큰은 메모리에만 둔다(새로고침하면 로그아웃)
 function renderAccount() {
