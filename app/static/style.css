@@ -38,7 +38,7 @@ main { padding-top: 20px; padding-bottom: 28px; outline: none; }
 .muted { color: var(--muted); }
 .small { font-size: .85rem; }
 label { display: block; font-weight: 600; margin: 10px 0 4px; }
-textarea, input[type=text], select { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text); font: inherit; }
+textarea, input[type=text], input[type=email], input[type=password], select { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text); font: inherit; }
 textarea { min-height: 84px; resize: vertical; }
 .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .btn { background: var(--accent); color: var(--accent-ink); border: 0; border-radius: 8px; padding: 10px 18px; font: inherit; font-weight: 600; cursor: pointer; min-height: 44px; }
@@ -81,3 +81,16 @@ tr.click:hover { background: var(--accent-soft); }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
 @media (max-width: 560px) { dl.def { grid-template-columns: 1fr; } .bigvalue { font-size: 1.8rem; } }
+
+/* 계정(로그인) 영역: Supabase 모드에서만 보인다 */
+.top-right { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; position: relative; }
+.account { display: flex; align-items: center; gap: 8px; font-size: .85rem; }
+.account .who { display: flex; align-items: center; gap: 8px; }
+.avatar { width: 28px; height: 28px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: .8rem; }
+.btn.small { min-height: 32px; padding: 4px 12px; font-size: .85rem; }
+.login-panel { position: absolute; top: 100%; right: 0; z-index: 5; width: min(340px, 92vw); background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; box-shadow: 0 8px 24px rgba(0,0,0,.18); margin-top: 6px; }
+.login-panel label { display: block; font-size: .8rem; font-weight: 600; color: var(--muted); margin: 8px 0 2px; }
+.login-panel .btn { width: 100%; margin-top: 12px; }
+.login-panel .hint { font-size: .78rem; color: var(--muted); margin: 10px 0 0; }
+.login-msg { margin-top: 10px; padding: 8px 10px; border-radius: 6px; font-size: .85rem; font-weight: 600; background: var(--bad-soft); color: var(--bad); }
+.login-msg.info { background: var(--info-soft); color: var(--info); }

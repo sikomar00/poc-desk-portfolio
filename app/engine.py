@@ -24,7 +24,8 @@ ROOT = APP_DIR.parent
 sys.path.insert(0, str(ROOT / "experiment"))
 
 import run_experiment as R  # noqa: E402  (안전 검사, 읽기 전용 실행, 프롬프트 구성을 실험과 똑같이 쓴다)
-from gold import gold_sql  # noqa: E402
+from gold import gold_sql as _sqlite_gold_sql  # noqa: E402
+import db  # noqa: E402  (Supabase 연결 계층. POC_DESK_BACKEND=supabase 일 때만 쓰고, 기본은 SQLite)
 
 DATA_DIR = Path(os.environ.get("POC_DESK_DATA_DIR", APP_DIR / "data"))
 REPORT_DIR = Path(os.environ.get("POC_DESK_REPORT_DIR", APP_DIR / "reports"))
@@ -35,6 +36,7 @@ REQUIRED_FIELDS = [("formula", "계산식"), ("include_exclude", "포함·제외
 BLOCK_TEXT = {"empty": "SQL이 비어 있음", "multiple_statements": "여러 문장이 들어 있음", "not_select": "SELECT로 시작하지 않음",
               "forbidden_keyword": "데이터를 바꾸는 키워드가 들어 있음", "hidden_table": "정답표(ledger)를 읽으려 함"}
 UNIT_LABEL = {"net_revenue": "원", "aov": "원", "paid_orders": "건", "refund_rate": "%", "cancel_rate": "%"}
+BACKEND = "supabase" if db.enabled() else "sqlite"
 DEFAULT_MODEL = os.environ.get("LLM_MODEL", "nvidia/nemotron-3-super-120b-a12b")
 
 # 질문 속 단어로 지표를 찾는다. strong 은 지표를 거의 확정하는 단어, weak 는 보조 단서.
@@ -232,7 +234,18 @@ def _same(metric_key, a, b):
     return abs(a - b) <= R.TOLERANCE[metric_key]
 
 
+def gold_sql(metric_key, months):
+    """기준 계산식. 같은 정의를 데이터베이스 문법에 맞게 돌려준다."""
+    return db.gold_sql(metric_key, months) if BACKEND == "supabase" else _sqlite_gold_sql(metric_key, months)
+
+
+def _execute(sql):
+    return db.execute_readonly(sql) if BACKEND == "supabase" else R.execute_readonly(sql)
+
+
 def _ledger_total(months):
+    if BACKEND == "supabase":
+        return db.ledger_total(months)
     import sqlite3
     con = sqlite3.connect(f"file:{R.DB}?mode=ro", uri=True)
     try:
@@ -289,7 +302,7 @@ def _fmt_value(key, v, unit=None):
     return f"{num}{unit}"
 
 
-def run_query(question, metric_key, months, mode="reference", model=None):
+def run_query(question, metric_key, months, mode="reference", model=None, user_id=None):
     """F4~F6: 정의된 지표만 실행한다. 사전에 없는 지표는 거부한다."""
     metric = get_metric(metric_key)
     months = sorted({m for m in months if isinstance(m, str) and m in VALID_MONTHS})  # 중복 제거(원장 합계가 두 번 더해지지 않게)
@@ -315,20 +328,22 @@ def run_query(question, metric_key, months, mode="reference", model=None):
             if not llm_key_status():
                 raise RuntimeError("NVIDIA_API_KEY 가 설정되어 있지 않습니다. 앱을 시작한 창에서 키를 설정한 뒤 다시 시작하세요.")
             q = f"{question}\n(확정한 기간: {', '.join(months)})"
-            user = R.build_user_prompt("B2", R.load_schema(), _prompt_dictionary_text(), q)
-            resp = _make_client(model).chat(R.SYSTEM_PROMPT, user)
+            schema = db.schema_text() if BACKEND == "supabase" else R.load_schema()
+            system = (R.SYSTEM_PROMPT.replace("SQLite", "PostgreSQL") + " " + db.SYSTEM_NOTE) if BACKEND == "supabase" else R.SYSTEM_PROMPT
+            user = R.build_user_prompt("B2", schema, _prompt_dictionary_text(), q)
+            resp = _make_client(model).chat(system, user)
             rec["sql"] = R.extract_sql(resp["text"])
             block = R.safety_check(rec["sql"])
             if block:
                 rec["status"] = "BLOCKED"
                 raise RuntimeError(f"안전 검사에서 차단되었습니다: {BLOCK_TEXT.get(block, block)}. 읽기 전용 SELECT 한 문장만 실행합니다.")
-        rec["value"], shape = R.execute_readonly(rec["sql"])
+        rec["value"], shape = _execute(rec["sql"])
         rec["elapsed_ms"] = _fmt_ms(t0)  # 대조용 기준값 계산 시간은 포함하지 않는다
         if rec["value"] is None:
             raise RuntimeError(f"결과가 숫자 하나(1행 1열)가 아닙니다({shape}).")
         if metric["has_reference"]:
             # 기준 계산식 방식이면 방금 실행한 값이 곧 기준값이라 다시 실행하지 않는다
-            reference_value = rec["value"] if mode == "reference" else R.execute_readonly(gold_sql(metric_key, months))[0]
+            reference_value = rec["value"] if mode == "reference" else _execute(gold_sql(metric_key, months))[0]
             rec["reference_value"] = reference_value
         rec.update(reconcile(metric, months, mode, rec["value"], reference_value))
     except Exception as e:  # noqa: BLE001  화면에 이유를 보여 주고 기록한다 (F9)
@@ -337,13 +352,21 @@ def run_query(question, metric_key, months, mode="reference", model=None):
         rec["error"] = str(e)[:300]
         rec["elapsed_ms"] = rec["elapsed_ms"] or _fmt_ms(t0)
         rec["overall"] = "ERROR"
-    _append_history(rec)
+    _save_run(rec, user_id)
     return rec
 
 
 # ---------------------------------------------------------------- 기록 (F9)
 def _history_path():
     return DATA_DIR / "history.jsonl"
+
+
+def _save_run(rec, user_id=None):
+    """Supabase 모드면 app.query_runs 에, 아니면 로컬 기록 파일에 남긴다."""
+    if BACKEND == "supabase":
+        db.record_run(rec, user_id)
+    else:
+        _append_history(rec)
 
 
 def _append_history(rec):
@@ -369,11 +392,18 @@ def _iter_history():
                 continue
 
 
-def history(limit=50):
+def history(limit=50, user_id=None):
+    if BACKEND == "supabase":
+        return db.history(user_id, limit) if user_id else []  # 실행 기록은 로그인한 본인 것만 본다
     return list(reversed(collections.deque(_iter_history(), maxlen=limit)))
 
 
-def get_run(run_id):
+def get_run(run_id, user_id=None):
+    if BACKEND == "supabase":
+        found = db.get_run(run_id, user_id) if user_id else None
+        if found is None:
+            raise ValueError("해당 실행 기록을 찾을 수 없습니다.")
+        return found
     found = None
     for r in _iter_history():  # 기록 개수 상한 없이 전체에서 찾는다
         if r.get("id") == run_id:
@@ -392,8 +422,8 @@ def _md_cell(text):
 BADGE_TEXT = {"PASS": "통과", "FLAG": "경고(불일치)", "UNVERIFIED": "검증 불가", "INFO": "기준 계산식으로 계산", "ERROR": "오류"}
 
 
-def make_report(run_id):
-    r = get_run(run_id)
+def make_report(run_id, user_id=None):
+    r = get_run(run_id, user_id)
     metric = get_metric(r["metric_key"])
     mode_text = ("검증된 기준 계산식 실행" if r["mode"] == "reference" else f"AI가 SQL 생성 (모델: {r['model']})")
     lines = [f"# PoC 리포트 — {r['metric_name']}", "",

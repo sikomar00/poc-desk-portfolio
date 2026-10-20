@@ -17,3 +17,6 @@ app/reports/
 
 # Supabase QA 화면의 접속 설정(생성 파일)
 qa/config.js
+
+# 앱 접속 도구(pg8000) 설치 폴더 — requirements.txt 로 다시 설치
+app/_vendor/

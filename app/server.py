@@ -9,6 +9,7 @@ Host·Origin 검사, JSON 요청만 허용, 사용자 지정 헤더(X-PocDesk) �
 import argparse
 import json
 import mimetypes
+import os
 import sys
 import threading
 import webbrowser
@@ -18,12 +19,14 @@ from urllib.parse import parse_qs, urlparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import engine  # noqa: E402
+import db  # noqa: E402
 
 STATIC = Path(__file__).resolve().parent / "static"
 MAX_BODY = 100_000
 DRAIN_LIMIT = 2_000_000  # 너무 큰 요청도 이만큼까지는 읽어서 버린다 (그 이상이면 연결을 닫음)
+SUPABASE_ORIGIN = (os.environ.get("SUPABASE_URL") or "").rstrip("/") if engine.BACKEND == "supabase" else ""
 CSP = ("default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
-       "connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
+       f"connect-src 'self' {SUPABASE_ORIGIN}".rstrip() + "; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -64,6 +67,16 @@ class Handler(BaseHTTPRequestHandler):
     def _error(self, code, message):
         self._json({"error": message}, code)
 
+    def _user(self):
+        """Authorization: Bearer <로그인 토큰> 이 유효한 본인 계정이면 {'id','email'}, 아니면 None.
+        Supabase 모드가 아니면 항상 None(로컬 SQLite 모드는 로그인을 쓰지 않는다)."""
+        if engine.BACKEND != "supabase":
+            return None
+        auth = self.headers.get("Authorization", "")
+        if not auth.startswith("Bearer "):
+            return None
+        return db.verify_token(auth[7:].strip())
+
     # ---- GET
     def do_GET(self):
         if self.headers.get("Host", "") not in self._allowed_hosts():
@@ -84,14 +97,25 @@ class Handler(BaseHTTPRequestHandler):
     def _api_get(self, path, q):
         try:
             if path == "/api/status":
-                return self._json({"llm_key": engine.llm_key_status(), "default_model": engine.DEFAULT_MODEL,
-                                   "data_months": engine.VALID_MONTHS})
+                st = {"llm_key": engine.llm_key_status(), "default_model": engine.DEFAULT_MODEL,
+                      "data_months": engine.VALID_MONTHS, "backend": engine.BACKEND}
+                if engine.BACKEND == "supabase":  # 로그인 화면이 Supabase Auth 로 직접 로그인하는 데 쓰는 공개 값(비밀 아님)
+                    st["auth"] = {"url": os.environ.get("SUPABASE_URL"), "anon_key": os.environ.get("SUPABASE_ANON_KEY")}
+                    user = self._user()
+                    st["user"] = {"email": user["email"]} if user else None
+                return self._json(st)
             if path == "/api/dictionary":
                 return self._json({"metrics": engine.dictionary()})
             if path == "/api/history":
-                return self._json({"runs": engine.history(50)})
+                user = self._user()
+                if engine.BACKEND == "supabase" and not user:
+                    return self._error(401, "실행 기록은 로그인한 본인 것만 볼 수 있습니다. 로그인해 주세요.")
+                return self._json({"runs": engine.history(50, user["id"] if user else None)})
             if path == "/api/run":
-                return self._json(engine.get_run((q.get("id") or [""])[0]))
+                user = self._user()
+                if engine.BACKEND == "supabase" and not user:
+                    return self._error(401, "로그인이 필요합니다.")
+                return self._json(engine.get_run((q.get("id") or [""])[0], user["id"] if user else None))
         except ValueError as e:
             return self._error(404, str(e))
         self._error(404, "찾을 수 없습니다.")
@@ -153,6 +177,8 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/intake":
                 return self._json(engine.intake(body.get("question")))
             if path == "/api/definition":
+                if engine.BACKEND == "supabase" and not self._user():
+                    return self._error(401, "사용자 정의 지표는 로그인한 본인만 저장할 수 있습니다.")
                 aliases = body.get("aliases") or []
                 if isinstance(aliases, str):
                     aliases = [a for a in aliases.replace("，", ",").split(",")]
@@ -160,11 +186,15 @@ class Handler(BaseHTTPRequestHandler):
                                                          body.get("include_exclude"), body.get("period_basis"),
                                                          body.get("unit")))
             if path == "/api/run":
+                user = self._user()  # 비로그인도 합성 데이터 계산은 가능하다(기록의 user_id 는 비어 있음)
                 return self._json(engine.run_query(str(body.get("question") or "")[:300], body.get("metric_key"),
                                                    list(body.get("months") or []), body.get("mode") or "reference",
-                                                   body.get("model")))
+                                                   body.get("model"), user["id"] if user else None))
             if path == "/api/report":
-                return self._json(engine.make_report(str(body.get("run_id") or "")))
+                user = self._user()
+                if engine.BACKEND == "supabase" and not user:
+                    return self._error(401, "리포트는 로그인한 본인의 실행 기록으로만 만들 수 있습니다.")
+                return self._json(engine.make_report(str(body.get("run_id") or ""), user["id"] if user else None))
         except ValueError as e:
             return self._error(400, str(e))
         except Exception as e:  # noqa: BLE001
@@ -185,6 +215,7 @@ def main():
     server = make_server(a.port)
     url = f"http://127.0.0.1:{server.server_address[1]}"
     print(f"realDefinition 실행 중: {url}  (끄려면 Ctrl+C)")
+    print("데이터:", "Supabase(서울, 합성 데이터)" if engine.BACKEND == "supabase" else "로컬 SQLite 파일")
     print("AI 모드:", "API 키 설정됨" if engine.llm_key_status() else "API 키 없음 (검증된 계산식 모드만 사용 가능)")
     if not a.no_browser:
         threading.Timer(0.6, lambda: webbrowser.open(url)).start()

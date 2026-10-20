@@ -5,6 +5,7 @@ const S = {
   tab: "ask", step: "ask", question: "", intake: null, metrics: [], metricKey: null, months: [],
   confirmed: false, mode: "reference", model: "", status: { llm_key: false, default_model: "", data_months: [] },
   run: null, report: null, loading: "", notice: "", draft: {},
+  auth: { token: null, email: null, open: false, busy: false, msg: "", kind: "err", draft: "" },
 };
 const EXAMPLES = ["2월에 얼마 벌었어?", "1분기 환불률은?", "3월 취소율은 몇 %야?", "2월 주문 몇 건이야?", "재구매율은 얼마야?"];
 const BADGE = { PASS: "통과", FLAG: "경고(불일치)", UNVERIFIED: "검증 불가", INFO: "기준 계산식", ERROR: "오류" };
@@ -26,12 +27,17 @@ function h(tag, attrs, ...kids) {
 }
 async function api(method, path, body) {
   const opt = { method, headers: { "X-PocDesk": "1" } };
+  if (S.auth.token) opt.headers.Authorization = "Bearer " + S.auth.token;
   if (body !== undefined) { opt.headers["Content-Type"] = "application/json"; opt.body = JSON.stringify(body); }
   const res = await fetch(path, opt);
   const data = await res.json().catch(() => ({}));
+  if (res.status === 401 && S.auth.token) { clearLogin(); renderAccount(); throw new Error("로그인이 만료되었거나 본인 계정이 아닙니다. 다시 로그인해 주세요."); }
   if (!res.ok) throw new Error(data.error || `요청 실패 (${res.status})`);
   return data;
 }
+const isCloud = () => S.status.backend === "supabase";
+const loggedIn = () => !!S.auth.token;
+function clearLogin() { S.auth.token = null; S.auth.email = null; S.historyRows = null; S.status.user = null; }
 const badge = (status, text) => h("span", { class: "badge " + status }, text || BADGE[status] || status);
 function fmt(run) {
   if (run.value == null) return "-";
@@ -55,9 +61,55 @@ function stepper() {
 function renderStatus() {
   const el = document.getElementById("status");
   el.replaceChildren(
+    h("span", { class: "badge neutral" }, isCloud() ? "데이터: Supabase(서울)" : "데이터: 로컬 SQLite"),
     h("span", { class: "badge neutral" }, "데이터 " + S.status.data_months.map(monthLabel).join("·")),
     h("span", { class: "badge " + (S.status.llm_key ? "on" : "off") }, S.status.llm_key ? "AI 모드 사용 가능" : "AI 키 없음 (계산식 모드만)"));
 }
+// ---- 계정 (Supabase 모드에서만): 로그인은 브라우저가 Supabase Auth 에 직접 하고, 토큰은 메모리에만 둔다(새로고침하면 로그아웃)
+function renderAccount() {
+  const box = document.getElementById("account");
+  if (!isCloud()) { box.replaceChildren(); return; }
+  if (loggedIn()) {
+    box.replaceChildren(h("span", { class: "who" }, h("span", { class: "avatar", "aria-hidden": "true" }, (S.auth.email || "?")[0].toUpperCase()), h("span", {}, S.auth.email)),
+      h("button", { class: "btn secondary small", onclick: logout }, "로그아웃"));
+    return;
+  }
+  const kids = [h("button", { class: "btn secondary small", "aria-expanded": String(S.auth.open), onclick: () => { S.auth.open = !S.auth.open; S.auth.msg = ""; renderAccount(); } },
+    S.auth.open ? "닫기" : "로그인")];
+  if (S.auth.open) {
+    const email = h("input", { type: "email", id: "lg-email", autocomplete: "username", required: true, placeholder: "you@example.com", value: S.auth.draft,
+      oninput: (e) => { S.auth.draft = e.target.value; } });  // 화면을 다시 그려도 입력한 이메일이 사라지지 않게 기억한다
+    const pw = h("input", { type: "password", id: "lg-pw", autocomplete: "current-password", required: true });
+    kids.push(h("form", { class: "login-panel", onsubmit: (e) => { e.preventDefault(); login(email.value.trim(), pw.value, pw); } },
+      h("label", { for: "lg-email" }, "이메일"), email, h("label", { for: "lg-pw" }, "비밀번호"), pw,
+      h("button", { class: "btn", type: "submit", disabled: S.auth.busy }, S.auth.busy ? "로그인 중…" : "로그인"),
+      S.auth.msg && h("div", { class: "login-msg " + S.auth.kind, role: "alert" }, S.auth.msg),
+      h("p", { class: "hint" }, "로그인 없이도 합성 데이터 계산은 할 수 있습니다. 실행 기록·리포트·정의 저장은 본인 계정만 가능합니다.")));
+    setTimeout(() => (S.auth.draft ? pw : email).focus(), 0);
+  }
+  box.replaceChildren(...kids);
+}
+async function login(email, password, pwInput) {
+  if (!email || !password) { S.auth.msg = "이메일과 비밀번호를 모두 입력하세요."; S.auth.kind = "err"; return renderAccount(); }
+  S.auth.busy = true; S.auth.msg = "로그인 중…"; S.auth.kind = "info"; renderAccount();
+  try {
+    const res = await fetch(S.status.auth.url + "/auth/v1/token?grant_type=password", { method: "POST",
+      headers: { apikey: S.status.auth.anon_key, "Content-Type": "application/json" }, body: JSON.stringify({ email, password }) });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      S.auth.msg = j.error_code === "invalid_credentials" ? "이메일 또는 비밀번호가 맞지 않습니다." : `로그인 실패 (${res.status}${j.error_code ? ", " + j.error_code : ""})`;
+      S.auth.kind = "err"; return;
+    }
+    S.auth.token = j.access_token; S.auth.email = (j.user && j.user.email) || email;
+    const st = await api("GET", "/api/status");  // 서버가 토큰과 본인 계정 등록(app.profiles)을 확인한다
+    if (!st.user) { clearLogin(); S.auth.msg = "로그인은 되었지만 이 계정은 본인 계정으로 등록되어 있지 않습니다."; S.auth.kind = "err"; return; }
+    S.status = st; S.auth.open = false; S.auth.msg = ""; S.historyRows = null; S.notice = "";
+    S.metrics = (await api("GET", "/api/dictionary")).metrics;
+  } catch (e) { S.auth.msg = "서버에 연결하지 못했습니다: " + e.message; S.auth.kind = "err"; }
+  finally { S.auth.busy = false; if (pwInput) pwInput.value = ""; renderStatus(); renderAccount(); render(); }
+}
+function logout() { clearLogin(); S.auth.open = false; S.notice = ""; renderAccount(); render(); }
+
 function render() {
   document.querySelectorAll(".tab").forEach((t) => {
     if (t.dataset.tab === S.tab) t.setAttribute("aria-current", "page"); else t.removeAttribute("aria-current");
@@ -230,7 +282,8 @@ function viewResult() {
   if (r.sql) body.push(h("div", { class: "card" }, h("details", {}, h("summary", {}, "실행한 SQL 보기"), h("pre", {}, r.sql))));
   body.push(h("div", { class: "row" },
     h("button", { class: "btn secondary", onclick: () => { S.question = ""; go("ask"); } }, "새 질문"),
-    h("button", { class: "btn", onclick: makeReport, disabled: r.status !== "OK" && !r.error }, "리포트 만들기")));
+    h("button", { class: "btn", onclick: makeReport, disabled: (r.status !== "OK" && !r.error) || (isCloud() && !loggedIn()) }, "리포트 만들기"),
+    isCloud() && !loggedIn() ? h("span", { class: "muted small" }, "리포트는 로그인 후 만들 수 있습니다") : null));
   return h("div", {}, stepper(), body, S.notice && h("div", { class: "notice error", role: "alert" }, S.notice));
 }
 async function makeReport() {
@@ -266,6 +319,7 @@ function viewDictionary() {
 
 // ---- 기록 (F9)
 function viewHistory() {
+  if (isCloud() && !loggedIn()) return h("div", { class: "card empty" }, "실행 기록은 로그인한 본인 것만 볼 수 있습니다. 오른쪽 위에서 로그인해 주세요.");
   const rows = S.historyRows;
   if (!rows) { loadHistory(); return h("div", { class: "card empty" }, h("span", { class: "spinner" }), " 불러오는 중…"); }
   if (!rows.length) return h("div", { class: "card empty" }, "아직 실행 기록이 없습니다. 질문하기에서 첫 질문을 해 보세요.");
@@ -290,5 +344,5 @@ document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () 
     S.status = await api("GET", "/api/status"); S.metrics = (await api("GET", "/api/dictionary")).metrics;
     S.model = S.status.default_model;
   } catch (e) { S.notice = "서버에 연결하지 못했습니다: " + e.message; }
-  renderStatus(); render();
+  renderStatus(); renderAccount(); render();
 })();
