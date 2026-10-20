@@ -36,7 +36,10 @@ const badge = (status, text) => h("span", { class: "badge " + status }, text || 
 function fmt(run) {
   if (run.value == null) return "-";
   if (run.unit === "%") return run.value.toLocaleString("ko-KR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + "%";
-  return Math.round(run.value).toLocaleString("ko-KR") + run.unit;
+  // 정수면 그대로, 소수가 있으면 둘째 자리까지 (정수로 반올림해서 값이 달라 보이지 않게)
+  const text = Number.isInteger(run.value) ? run.value.toLocaleString("ko-KR")
+    : run.value.toLocaleString("ko-KR", { maximumFractionDigits: 2 });
+  return text + (run.unit || "");
 }
 const metricOf = (key) => S.metrics.find((m) => m.key === key);
 const monthLabel = (m) => Number(m.slice(5)) + "월";
@@ -60,11 +63,18 @@ function render() {
     if (t.dataset.tab === S.tab) t.setAttribute("aria-current", "page"); else t.removeAttribute("aria-current");
   });
   const view = document.getElementById("view");
+  // 화면을 통째로 다시 그리면 키보드 포커스가 사라지므로, 조작하던 컨트롤(data-fk)을 기억했다가 되돌린다
+  const active = document.activeElement;
+  const focusKey = active && active.dataset ? active.dataset.fk : null;
   let node;
   if (S.tab === "dictionary") node = viewDictionary();
   else if (S.tab === "history") node = viewHistory();
   else node = { ask: viewAsk, define: viewDefine, result: viewResult, report: viewReport }[S.step]();
   view.replaceChildren(node);
+  if (focusKey) {
+    const again = view.querySelector(`[data-fk="${focusKey}"]`);
+    if (again) again.focus();
+  }
 }
 function go(step) { S.step = step; S.tab = "ask"; S.notice = ""; render(); document.getElementById("view").focus(); }
 
@@ -105,7 +115,7 @@ function viewDefine() {
   const parts = [stepper(), h("div", { class: "card" }, h("h2", {}, "질문"), h("p", {}, S.question))];
 
   // 지표 선택
-  const sel = h("select", { id: "metric", "aria-label": "지표", onchange: (e) => { S.metricKey = e.target.value; S.confirmed = false; S.notice = ""; render(); } },
+  const sel = h("select", { id: "metric", "data-fk": "metric", "aria-label": "지표", onchange: (e) => { S.metricKey = e.target.value; S.confirmed = false; S.notice = ""; render(); } },
     h("option", { value: "" }, "— 지표를 고르세요 —"),
     S.metrics.map((m) => h("option", { value: m.key, selected: m.key === S.metricKey }, m.name + (m.source === "custom" ? " (사용자 정의)" : ""))),
     h("option", { value: "__new", selected: isNew }, "+ 새 지표 정의하기"));
@@ -116,7 +126,7 @@ function viewDefine() {
 
   // 기간
   const checks = S.status.data_months.map((m) => h("label", {},
-    h("input", { type: "checkbox", checked: S.months.includes(m), onchange: (e) => {
+    h("input", { type: "checkbox", "data-fk": "month-" + m, checked: S.months.includes(m), onchange: (e) => {
       S.months = e.target.checked ? [...S.months, m].sort() : S.months.filter((x) => x !== m); render(); } }), monthLabel(m)));
   parts.push(h("div", { class: "card" }, h("h2", {}, "기간"),
     it.invalid_months.length ? h("div", { class: "notice", role: "alert" }, "데이터가 없는 기간은 제외했습니다: " + it.invalid_months.map(monthLabel).join(", ") + " (데이터는 1~3월뿐입니다)") : null,
@@ -139,7 +149,7 @@ function viewDefine() {
   return h("div", {}, parts);
 }
 function definitionCard(m) {
-  const confirm = h("input", { type: "checkbox", id: "confirm", checked: S.confirmed, onchange: (e) => { S.confirmed = e.target.checked; render(); } });
+  const confirm = h("input", { type: "checkbox", id: "confirm", "data-fk": "confirm", checked: S.confirmed, onchange: (e) => { S.confirmed = e.target.checked; render(); } });
   return h("div", { class: "card" },
     h("div", { class: "row" }, h("h2", {}, m.name + " 정의"), badge("neutral", m.version)),
     h("dl", { class: "def" },
@@ -179,7 +189,7 @@ function newDefinitionForm() {
 }
 function runOptions(m) {
   const radio = (value, label, hint, disabled) => h("label", { class: "row" },
-    h("input", { type: "radio", name: "mode", value, checked: S.mode === value, disabled, onchange: () => { S.mode = value; render(); } }),
+    h("input", { type: "radio", name: "mode", "data-fk": "mode-" + value, value, checked: S.mode === value, disabled, onchange: () => { S.mode = value; render(); } }),
     h("span", {}, label, h("span", { class: "muted small" }, " — " + hint)));
   const aiOff = !S.status.llm_key;
   if (!m.has_reference && S.mode === "reference") S.mode = "ai";
@@ -232,7 +242,9 @@ async function makeReport() {
 function viewReport() {
   const rp = S.report;
   const blob = new Blob([rp.markdown], { type: "text/markdown;charset=utf-8" });
-  const link = h("a", { class: "btn", href: URL.createObjectURL(blob), download: rp.filename }, "md 파일 내려받기");
+  if (S.reportUrl) URL.revokeObjectURL(S.reportUrl);  // 화면을 다시 그릴 때마다 쌓이지 않게 이전 주소를 해제
+  S.reportUrl = URL.createObjectURL(blob);
+  const link = h("a", { class: "btn", href: S.reportUrl, download: rp.filename }, "md 파일 내려받기");
   return h("div", {}, stepper(), h("div", { class: "card" }, h("h2", {}, "리포트가 저장되었습니다"),
     h("p", { class: "small muted" }, "서버 PC에 저장된 위치: " + rp.path), h("div", { class: "row" }, link,
       h("button", { class: "btn secondary", onclick: () => go("result") }, "← 결과로"),
@@ -267,7 +279,7 @@ async function loadHistory() {
   try { S.historyRows = (await api("GET", "/api/history")).runs; } catch { S.historyRows = []; }
   if (S.tab === "history") render();
 }
-function openRun(r) { S.run = r; S.report = null; go("result"); S.step = "result"; render(); }
+function openRun(r) { S.run = r; S.report = null; go("result"); }
 
 // ---- 시작
 document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => {

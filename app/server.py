@@ -28,9 +28,13 @@ CSP = ("default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' 
 
 class Handler(BaseHTTPRequestHandler):
     server_version = "PocDesk/1.0"
+    timeout = 30  # 소켓 읽기·쓰기 제한(초). 요청을 덜 보내고 멈춘 클라이언트가 스레드를 영원히 붙잡지 못하게 한다
 
-    def log_message(self, fmt, *args):  # 조용히: 오류만 표준 오류로
-        if args and str(args[1]).startswith(("4", "5")):
+    def log_message(self, fmt, *args):
+        """조용히: 정상 요청 기록은 버리고, 4xx·5xx 응답과 send_error 같은 오류 기록은 표준 오류로 남긴다."""
+        is_request_log = fmt.startswith('"')  # log_request: '"%s" %s %s' → (요청줄, 응답 코드, 크기)
+        failed = len(args) > 1 and str(args[1]).startswith(("4", "5"))
+        if not is_request_log or failed:
             sys.stderr.write("[%s] %s\n" % (self.log_date_time_string(), fmt % args))
 
     # ---- 보조
@@ -40,16 +44,19 @@ class Handler(BaseHTTPRequestHandler):
 
     def _send(self, code, body, ctype, extra=None):
         data = body if isinstance(body, bytes) else body.encode("utf-8")
-        self.send_response(code)
-        self.send_header("Content-Type", ctype)
-        self.send_header("Content-Length", str(len(data)))
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("Content-Security-Policy", CSP)
-        for k, v in (extra or {}).items():
-            self.send_header(k, v)
-        self.end_headers()
-        self.wfile.write(data)
+        try:
+            self.send_response(code)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Content-Security-Policy", CSP)
+            for k, v in (extra or {}).items():
+                self.send_header(k, v)
+            self.end_headers()
+            self.wfile.write(data)
+        except (ConnectionError, TimeoutError):
+            self.close_connection = True  # 응답을 받을 클라이언트가 이미 떠났다
 
     def _json(self, obj, code=200):
         self._send(code, json.dumps(obj, ensure_ascii=False), "application/json; charset=utf-8")
@@ -100,17 +107,25 @@ class Handler(BaseHTTPRequestHandler):
             return b"", True, False
         if length < 0:
             return b"", True, False
-        if length <= MAX_BODY:
-            return self.rfile.read(length), False, False
-        remaining = min(length, DRAIN_LIMIT)  # 너무 큰 본문은 읽고 버리되 상한까지만
-        while remaining > 0:
-            chunk = self.rfile.read(min(65536, remaining))
-            if not chunk:
-                break
-            remaining -= len(chunk)
-        if length > DRAIN_LIMIT:
-            self.close_connection = True  # 끝까지 소비하지 못했으니 연결을 닫는다
-        return b"", False, True
+        try:
+            if length <= MAX_BODY:
+                raw = self.rfile.read(length)
+                if len(raw) < length:  # 약속한 길이보다 적게 보내고 연결을 닫았다
+                    self.close_connection = True
+                    return b"", True, False
+                return raw, False, False
+            remaining = min(length, DRAIN_LIMIT)  # 너무 큰 본문은 읽고 버리되 상한까지만
+            while remaining > 0:
+                chunk = self.rfile.read(min(65536, remaining))
+                if not chunk:
+                    break
+                remaining -= len(chunk)
+            if length > DRAIN_LIMIT:
+                self.close_connection = True  # 끝까지 소비하지 못했으니 연결을 닫는다
+            return b"", False, True
+        except (TimeoutError, ConnectionError):
+            self.close_connection = True  # 본문을 보내다 멈춘 클라이언트: 스레드를 놓아 준다
+            return b"", True, False
 
     def do_POST(self):
         raw, bad_length, too_big = self._read_body()
