@@ -5,6 +5,7 @@ const S = {
   tab: "ask", step: "ask", question: "", intake: null, metrics: [], metricKey: null, months: [],
   confirmed: false, mode: "reference", model: "", status: { llm_key: false, default_model: "", data_months: [] },
   run: null, report: null, loading: "", notice: "", draft: {},
+  cmp: { key: "", loading: false, data: null, error: "" },
   auth: { token: null, email: null, open: false, busy: false, msg: "", kind: "err", draft: "" },
 };
 const EXAMPLES = ["2월에 얼마 벌었어?", "1분기 환불률은?", "3월 취소율은 몇 %야?", "2월 주문 몇 건이야?", "재구매율은 얼마야?"];
@@ -35,6 +36,8 @@ async function api(method, path, body) {
   if (!res.ok) throw new Error(data.error || `요청 실패 (${res.status})`);
   return data;
 }
+const won = (v) => Math.round(v).toLocaleString("ko-KR") + "원";
+const signed = (v) => (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(Math.round(v)).toLocaleString("ko-KR") + "원";
 const isCloud = () => S.status.backend === "supabase";
 const loggedIn = () => !!S.auth.token;
 function clearLogin() { S.auth.token = null; S.auth.email = null; S.historyRows = null; S.status.user = null; }
@@ -130,6 +133,40 @@ function render() {
 }
 function go(step) { S.step = step; S.tab = "ask"; S.notice = ""; render(); document.getElementById("view").focus(); }
 
+// ---- 정의 비교: 같은 질문을 정의별로 나란히 계산해 "정의가 숫자를 바꾼다"를 눈으로 보여 준다
+async function loadCompare(metricKey, months) {
+  S.cmp = { key: metricKey + "|" + months.join(","), loading: true, data: null, error: "" }; render();
+  try { S.cmp.data = await api("POST", "/api/compare", { metric_key: metricKey, months }); }
+  catch (e) { S.cmp.error = e.message; }
+  S.cmp.loading = false; render();
+}
+function compareCard(metricKey, months) {
+  if (metricKey !== "net_revenue" || !months.length) return null;
+  const key = metricKey + "|" + months.join(",");
+  const mine = S.cmp.key === key;
+  const head = [h("h2", {}, "정의가 다르면 숫자가 얼마나 달라질까?"),
+    h("p", { class: "muted small" }, "같은 데이터·같은 기간인데 '매출'을 어떻게 정의하느냐에 따라 결과가 바뀝니다. 정의 6가지로 나란히 계산해 봅니다.")];
+  if (!mine || (!S.cmp.data && !S.cmp.loading && !S.cmp.error)) {
+    return h("div", { class: "card cmp" }, head, h("button", { class: "btn secondary", onclick: () => loadCompare(metricKey, months) }, "6가지 정의로 비교하기"));
+  }
+  if (S.cmp.loading) return h("div", { class: "card cmp", role: "status" }, head, h("span", { class: "spinner" }), " 계산하는 중…");
+  if (S.cmp.error) return h("div", { class: "card cmp" }, head, h("div", { class: "notice error", role: "alert" }, S.cmp.error));
+  const d = S.cmp.data, max = Math.max(...d.rows.map((r) => r.total), 1);
+  const period = d.months.map(monthLabel).join("·");
+  const lead = h("p", { class: "cmp-lead" }, `${period} 매출은 정의에 따라 `, h("strong", {}, `최대 ${won(d.spread)}(${d.spread_pct.toFixed(1)}%) 차이`),
+    "가 납니다. ", d.official_matches_ledger ? "공식 정의는 원장과 정확히 일치합니다." : "공식 정의가 원장과 일치하지 않습니다. 확인이 필요합니다.");
+  const bar = (r) => { const sp = h("span"); sp.style.width = (r.total / max * 100).toFixed(1) + "%"; return h("div", { class: "cmp-bar", "aria-hidden": "true" }, sp); };
+  const rows = d.rows.map((r) => h("li", { class: "cmp-row" + (r.official ? " official" : "") },
+    h("div", { class: "cmp-main" }, h("div", {}, h("strong", {}, r.key + " " + r.title), " ", r.official ? badge("PASS", "공식") : null),
+      h("div", { class: "axes" }, h("span", {}, h("b", {}, "주문 "), r.orders), h("span", {}, h("b", {}, "금액 "), r.amount),
+        h("span", {}, h("b", {}, "취소·환불 "), r.refund), h("span", {}, h("b", {}, "기준일 "), r.date))),
+    h("div", { class: "cmp-nums" }, h("div", { class: "cmp-total" }, won(r.total)), bar(r),
+      r.official ? h("span", { class: "diff-zero" }, "공식 정의(기준)") :
+        h("span", { class: "diff-up" }, `공식보다 ${signed(r.diff)} (${r.diff_pct >= 0 ? "+" : ""}${r.diff_pct.toFixed(1)}%)`))));
+  return h("div", { class: "card cmp" }, head, lead, h("ul", { class: "cmp-list", "aria-label": `${period} 매출 정의별 비교` }, rows),
+    h("p", { class: "muted small" }, "각 정의는 네 가지 선택(어떤 주문을 포함하나, 어떤 금액인가, 취소·환불을 어떻게 다루나, 어느 날짜 기준인가)만 다릅니다. 어느 것이 틀렸다기보다, 정의를 정하지 않으면 같은 질문에 서로 다른 답이 나온다는 뜻입니다."));
+}
+
 // ---- 1 접수 (S1)
 function viewAsk() {
   const ta = h("textarea", { id: "q", placeholder: "예: 2월에 얼마 벌었어?", maxlength: 300, "aria-label": "질문" }, S.question);
@@ -187,6 +224,7 @@ function viewDefine() {
 
   // 정의
   if (metric) parts.push(definitionCard(metric)); else if (isNew) parts.push(newDefinitionForm());
+  if (metric) { const c = compareCard(metric.key, S.months); if (c) parts.push(c); }
 
   // 실행 방식
   if (metric) parts.push(runOptions(metric));
@@ -277,6 +315,8 @@ function viewResult() {
   body.push(head);
   if (r.checks.length) body.push(h("div", { class: "card" }, h("h2", {}, "정답과 대조 (대사)"),
     r.checks.map((c) => h("div", { class: "check" }, badge(c.status), h("div", {}, h("strong", {}, c.name), h("div", { class: "small" }, c.message))))));
+  const cmpCard = r.status === "OK" ? compareCard(r.metric_key, r.months) : null;
+  if (cmpCard) body.push(cmpCard);
   if (r.overall === "UNVERIFIED") body.push(h("div", { class: "notice info" }, "정답 출처가 없는 지표는 어떤 방법으로도 '검증됨'을 붙일 수 없습니다(실험 결과, docs/07 7절). 이 숫자는 사람이 확인해야 합니다."));
   if (r.overall === "FLAG") body.push(h("div", { class: "notice" }, "정답과 다릅니다. 이 숫자를 보고서에 쓰지 마세요. 거의 맞아 보이는 숫자도 틀릴 수 있습니다."));
   if (r.sql) body.push(h("div", { class: "card" }, h("details", {}, h("summary", {}, "실행한 SQL 보기"), h("pre", {}, r.sql))));
