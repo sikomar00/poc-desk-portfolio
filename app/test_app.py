@@ -572,6 +572,35 @@ class PublicDemo(unittest.TestCase):
         self.assertEqual(s, 403)
         self.assertIn("공개 데모", json.loads(d)["error"])
 
+    def test_ai_mode_is_only_for_the_logged_in_owner_in_public_mode(self):
+        os.environ["NVIDIA_API_KEY"] = "dummy-key-for-test"
+        saved = (engine.BACKEND, db.verify_token, engine.run_query)
+        calls = []
+        engine.BACKEND = "supabase"
+        os.environ.setdefault("SUPABASE_URL", "https://example.supabase.co")
+        os.environ.setdefault("SUPABASE_ANON_KEY", "anon-public-key")
+        db.verify_token = lambda tok: {"id": "u1", "email": "o@example.com"} if tok == "good" else None
+        engine.run_query = lambda q, mk, months, mode="reference", model=None, user_id=None: calls.append((mode, user_id)) or {"id": "r"}
+        try:
+            st = json.loads(self.req("GET", "/api/status", host=self.DOMAIN)[2])
+            self.assertFalse(st["llm_key"])  # 키가 있어도 비로그인에게는 꺼져 있다
+            self.assertTrue(st["ai_login_required"])
+            st = json.loads(self.req("GET", "/api/status", headers={"Authorization": "Bearer good"}, host=self.DOMAIN)[2])
+            self.assertTrue(st["llm_key"])
+            self.assertFalse(st["ai_login_required"])
+            body = {"question": "q", "metric_key": "net_revenue", "months": ["2026-01"], "mode": "ai"}
+            self.assertEqual(self.post("/api/run", body, host=self.DOMAIN)[0], 401)
+            self.assertEqual(calls, [])  # 엔진까지 가지 않는다
+            self.assertEqual(self.post("/api/run", body, host=self.DOMAIN, headers={"Authorization": "Bearer good"})[0], 200)
+            self.assertEqual(calls, [("ai", "u1")])
+            body["mode"] = "reference"  # 계산식 모드는 로그인 없이 된다
+            self.assertEqual(self.post("/api/run", body, host=self.DOMAIN)[0], 200)
+            server.PUBLIC = engine.PUBLIC = False  # 내 PC 모드는 키만 있으면 로그인 없이 쓴다
+            self.assertTrue(json.loads(self.req("GET", "/api/status", host=f"127.0.0.1:{self.port}")[2])["llm_key"])
+        finally:
+            engine.BACKEND, db.verify_token, engine.run_query = saved
+            del os.environ["NVIDIA_API_KEY"]
+
     def test_hsts_and_security_headers_in_public_mode(self):
         _, h, _ = self.req("GET", "/", host=self.DOMAIN)
         lower = {k.lower(): v for k, v in h.items()}
