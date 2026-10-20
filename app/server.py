@@ -12,15 +12,19 @@ import mimetypes
 import os
 import sys
 import threading
+import time
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urlencode, urlparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import engine  # noqa: E402
 import db  # noqa: E402
 
+PUBLIC = engine.PUBLIC  # POC_DESK_PUBLIC=1: 인터넷에 공개한 데모 (내 PC 전용 규칙 대신 같은 출처 규칙을 쓴다)
+RATE_LIMIT, RATE_WINDOW = 90, 60  # 같은 접속자(IP)당 60초에 90번까지. 서버리스에서는 인스턴스별 근사치라 완전한 방어는 아니다
+_hits, _hits_lock = {}, threading.Lock()
 STATIC = Path(__file__).resolve().parent / "static"
 MAX_BODY = 100_000
 DRAIN_LIMIT = 2_000_000  # 너무 큰 요청도 이만큼까지는 읽어서 버린다 (그 이상이면 연결을 닫음)
@@ -41,6 +45,47 @@ class Handler(BaseHTTPRequestHandler):
             sys.stderr.write("[%s] %s\n" % (self.log_date_time_string(), fmt % args))
 
     # ---- 보조
+    def _restore_path(self):
+        """Vercel 은 모든 요청을 /api/index?__vp=<원래 경로> 로 바꿔 넘긴다(vercel.json 의 rewrite). 원래 경로와 쿼리를 되돌린다."""
+        if not PUBLIC:
+            return
+        u = urlparse(self.path)
+        if u.path != "/api/index":
+            return
+        q = parse_qs(u.query, keep_blank_values=True)
+        orig = q.pop("__vp", [""])[0].lstrip("/")
+        rest = urlencode(q, doseq=True)
+        self.path = "/" + orig + ("?" + rest if rest else "")
+
+    def _host_ok(self):
+        """내 PC 모드: 127.0.0.1·localhost 만. 공개 데모: 어떤 도메인이든 받되, 쓰기 요청은 같은 출처만 받는다(_origin_ok)."""
+        host = self.headers.get("Host", "")
+        return bool(host) if PUBLIC else host in self._allowed_hosts()
+
+    def _origin_ok(self):
+        origin = self.headers.get("Origin")
+        if not origin:
+            return True
+        if PUBLIC:
+            return urlparse(origin).netloc == self.headers.get("Host", "")  # 다른 사이트에서 보낸 요청 차단
+        return origin.replace("http://", "") in self._allowed_hosts()
+
+    def _throttled(self):
+        """공개 데모에서만: 한 접속자가 너무 자주 요청하면 거절한다."""
+        if not PUBLIC:
+            return False
+        fwd = (self.headers.get("X-Forwarded-For") or "").split(",")[0].strip()
+        who = fwd or self.client_address[0]
+        now = time.monotonic()
+        with _hits_lock:
+            hits = [t for t in _hits.get(who, []) if now - t < RATE_WINDOW]
+            hits.append(now)
+            _hits[who] = hits
+            if len(_hits) > 2000:
+                for k in [k for k, v in _hits.items() if not v or now - v[-1] >= RATE_WINDOW]:
+                    del _hits[k]
+            return len(hits) > RATE_LIMIT
+
     def _allowed_hosts(self):
         port = self.server.server_address[1]
         return {f"127.0.0.1:{port}", f"localhost:{port}"}
@@ -54,6 +99,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("Content-Security-Policy", CSP)
+            if PUBLIC:
+                self.send_header("Strict-Transport-Security", "max-age=31536000")
             for k, v in (extra or {}).items():
                 self.send_header(k, v)
             self.end_headers()
@@ -79,8 +126,11 @@ class Handler(BaseHTTPRequestHandler):
 
     # ---- GET
     def do_GET(self):
-        if self.headers.get("Host", "") not in self._allowed_hosts():
+        self._restore_path()
+        if not self._host_ok():
             return self._error(403, "허용되지 않은 접속 주소입니다.")
+        if self._throttled():
+            return self._error(429, "요청이 너무 많습니다. 잠시 뒤 다시 시도하세요.")
         url = urlparse(self.path)
         path = url.path
         if path.startswith("/api/"):
@@ -98,7 +148,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if path == "/api/status":
                 st = {"llm_key": engine.llm_key_status(), "default_model": engine.DEFAULT_MODEL,
-                      "data_months": engine.VALID_MONTHS, "backend": engine.BACKEND}
+                      "data_months": engine.VALID_MONTHS, "backend": engine.BACKEND, "public": PUBLIC}
                 if engine.BACKEND == "supabase":  # 로그인 화면이 Supabase Auth 로 직접 로그인하는 데 쓰는 공개 값(비밀 아님)
                     st["auth"] = {"url": os.environ.get("SUPABASE_URL"), "anon_key": os.environ.get("SUPABASE_ANON_KEY")}
                     user = self._user()
@@ -153,11 +203,13 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         raw, bad_length, too_big = self._read_body()
-        if self.headers.get("Host", "") not in self._allowed_hosts():
+        self._restore_path()
+        if not self._host_ok():
             return self._error(403, "허용되지 않은 접속 주소입니다.")
-        origin = self.headers.get("Origin")
-        if origin and origin.replace("http://", "") not in self._allowed_hosts():
+        if not self._origin_ok():
             return self._error(403, "허용되지 않은 출처입니다.")
+        if self._throttled():
+            return self._error(429, "요청이 너무 많습니다. 잠시 뒤 다시 시도하세요.")
         if "application/json" not in (self.headers.get("Content-Type") or ""):
             return self._error(415, "JSON 요청만 받습니다.")
         if self.headers.get("X-PocDesk") != "1":
@@ -177,6 +229,8 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/intake":
                 return self._json(engine.intake(body.get("question")))
             if path == "/api/definition":
+                if PUBLIC:  # 공개 서버는 파일을 영구 저장할 수 없고, 누구의 정의인지도 보장할 수 없다
+                    return self._error(403, "공개 데모에서는 사용자 정의 지표 저장이 꺼져 있습니다. 내 PC에서 실행하면 저장할 수 있습니다.")
                 if engine.BACKEND == "supabase" and not self._user():
                     return self._error(401, "사용자 정의 지표는 로그인한 본인만 저장할 수 있습니다.")
                 aliases = body.get("aliases") or []
@@ -217,6 +271,7 @@ def main():
     server = make_server(a.port)
     url = f"http://127.0.0.1:{server.server_address[1]}"
     print(f"realDefinition 실행 중: {url}  (끄려면 Ctrl+C)")
+    print("모드:", "공개 데모(POC_DESK_PUBLIC=1)" if PUBLIC else "내 PC 전용")
     print("데이터:", "Supabase(서울, 합성 데이터)" if engine.BACKEND == "supabase" else "로컬 SQLite 파일")
     print("AI 모드:", "API 키 설정됨" if engine.llm_key_status() else "API 키 없음 (검증된 계산식 모드만 사용 가능)")
     if not a.no_browser:

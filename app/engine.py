@@ -37,6 +37,7 @@ BLOCK_TEXT = {"empty": "SQL이 비어 있음", "multiple_statements": "여러 �
               "forbidden_keyword": "데이터를 바꾸는 키워드가 들어 있음", "hidden_table": "정답표(ledger)를 읽으려 함"}
 UNIT_LABEL = {"net_revenue": "원", "aov": "원", "paid_orders": "건", "refund_rate": "%", "cancel_rate": "%"}
 BACKEND = "supabase" if db.enabled() else "sqlite"
+PUBLIC = os.environ.get("POC_DESK_PUBLIC") == "1"  # 인터넷에 공개한 데모: 비로그인 실행은 DB에 기록하지 않는다
 DEFAULT_MODEL = os.environ.get("LLM_MODEL", "nvidia/nemotron-3-super-120b-a12b")
 
 # 질문 속 단어로 지표를 찾는다. strong 은 지표를 거의 확정하는 단어, weak 는 보조 단서.
@@ -388,6 +389,8 @@ def _history_path():
 def _save_run(rec, user_id=None):
     """Supabase 모드면 app.query_runs 에, 아니면 로컬 기록 파일에 남긴다."""
     if BACKEND == "supabase":
+        if PUBLIC and not user_id:
+            return  # 공개 데모에서 누구나 DB에 행을 쌓지 못하게 한다(로그인한 본인 실행만 기록)
         db.record_run(rec, user_id)
     else:
         _append_history(rec)

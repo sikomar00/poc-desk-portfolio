@@ -41,6 +41,9 @@ def load_dotenv(path=None):
 load_dotenv()
 
 
+PERSIST = os.environ.get("POC_DESK_DB_PERSIST", "1") != "0"  # 0: 요청마다 연결을 닫는다(서버리스에서 연결이 남아 쌓이지 않게)
+
+
 def enabled():
     return os.environ.get("POC_DESK_BACKEND", "sqlite").lower() == "supabase"
 
@@ -86,22 +89,26 @@ class _Session:
 
     def run(self, _stmt, **params):
         with self.lock:
-            for attempt in (1, 2):
-                try:
-                    if self.conn is None:
-                        self._open()
-                    return self.conn.run(_stmt, **params)
-                except (OSError, ConnectionError, ssl.SSLError):  # 연결이 끊긴 경우만 재시도 (SQL 오류는 그대로 올린다)
-                    self.close()
-                    if attempt == 2:
-                        raise
-                except Exception as e:  # noqa: BLE001
-                    if type(e).__name__ == "InterfaceError":
+            try:
+                for attempt in (1, 2):
+                    try:
+                        if self.conn is None:
+                            self._open()
+                        return self.conn.run(_stmt, **params)
+                    except (OSError, ConnectionError, ssl.SSLError):  # 연결이 끊긴 경우만 재시도 (SQL 오류는 그대로 올린다)
                         self.close()
                         if attempt == 2:
                             raise
-                    else:
-                        raise
+                    except Exception as e:  # noqa: BLE001
+                        if type(e).__name__ == "InterfaceError":
+                            self.close()
+                            if attempt == 2:
+                                raise
+                        else:
+                            raise
+            finally:
+                if not PERSIST:
+                    self.close()
 
     def close(self):
         try:
