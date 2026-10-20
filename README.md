@@ -18,7 +18,7 @@ updated: 2026-10-19
 python app/server.py
 ```
 
-추가 설치 없이 Python만 있으면 `http://127.0.0.1:8765`에서 열립니다. 질문 → 정의 확인 → 계산 → 정답 대조 → 리포트 흐름을 눌러 볼 수 있습니다. 자세한 내용은 [docs/12-poc-desk-app.md](docs/12-poc-desk-app.md).
+테스트는 `python app/test_app.py`, `python experiment/test_experiment.py`로 돌립니다. 추가 설치 없이 Python만 있으면 `http://127.0.0.1:8765`에서 열립니다. 질문 → 정의 확인 → 계산 → 정답 대조 → 리포트 흐름을 눌러 볼 수 있습니다. 자세한 내용은 [docs/12-poc-desk-app.md](docs/12-poc-desk-app.md).
 
 ## 한 줄 요약
 
