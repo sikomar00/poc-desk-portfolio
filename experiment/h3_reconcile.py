@@ -16,7 +16,8 @@ import sqlite3
 import sys
 from pathlib import Path
 
-sys.stdout.reconfigure(encoding="utf-8")
+if hasattr(sys.stdout, "reconfigure"):  # 출력이 파일·테스트용 버퍼로 바뀐 상태에서 불러와도 죽지 않게
+    sys.stdout.reconfigure(encoding="utf-8")
 HERE = Path(__file__).resolve().parent
 DB = HERE.parent / "data" / "poc_desk_sample.db"
 TOLERANCES = [0.0, 0.001, 0.005, 0.01, 0.02, 0.05]  # 상대 허용 오차: 0%, 0.1%, 0.5%, 1%, 2%, 5%
@@ -70,6 +71,8 @@ def main():
     for f in sorted((HERE / "runs").glob("*.jsonl")):
         rows = [json.loads(l) for l in f.read_text(encoding="utf-8").splitlines() if l.strip()]
         meta = next(r for r in rows if r.get("type") == "meta")
+        if meta.get("suite", "main") != "main":  # 보류 질문(holdout) 기록은 매출 질문 Q01~Q05가 없으므로 제외
+            continue
         for r in rows:
             if r.get("type") == "run" and r["qid"] in REVENUE_QUESTIONS and r["cond"] == "B":
                 r["_model"] = meta["model"]

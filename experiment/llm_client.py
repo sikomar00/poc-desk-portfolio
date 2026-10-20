@@ -13,12 +13,14 @@
 사용: python experiment/llm_client.py models      # 사용 가능한 모델 목록 조회(키 필요, 미검증 기능)
       python experiment/llm_client.py ping MODEL  # 짧은 호출 한 번으로 연결 확인
 """
+import http.client
 import json
 import os
 import sys
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 DEFAULT_BASE_URL = "https://integrate.api.nvidia.com/v1"
@@ -26,6 +28,23 @@ DEFAULT_BASE_URL = "https://integrate.api.nvidia.com/v1"
 
 class LLMError(RuntimeError):
     pass
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """리다이렉트를 따라가지 않는다. 기본 동작은 Authorization(API 키) 헤더를 다른 주소로 그대로 들고 가기 때문이다."""
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+_OPENER = urllib.request.build_opener(_NoRedirect)
+
+
+def _check_base_url(url):
+    """키가 평문으로 나가지 않게 https만 허용한다(내 PC의 로컬 서버는 예외)."""
+    p = urllib.parse.urlparse(url)
+    local = p.hostname in ("localhost", "127.0.0.1", "::1")
+    if p.scheme != "https" and not (p.scheme == "http" and local):
+        raise LLMError(f"LLM_BASE_URL 은 https 주소여야 합니다(로컬 서버만 http 허용): {p.scheme}://{p.hostname or '?'}")
 
 
 def _scrub(text, key):
@@ -42,6 +61,7 @@ class LLMClient:
         self.max_tokens = max_tokens
         self.min_interval = 60.0 / rpm  # 호출 사이 최소 간격(초): 한도 초과(429) 예방
         self.base_url = (base_url or os.environ.get("LLM_BASE_URL") or DEFAULT_BASE_URL).rstrip("/")
+        _check_base_url(self.base_url)
         self.timeout = timeout
         self.max_retries = max_retries
         self._lock = threading.Lock()
@@ -68,19 +88,21 @@ class LLMClient:
         for attempt in range(self.max_retries):
             self._wait_turn()
             try:
-                with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                with _OPENER.open(req, timeout=self.timeout) as resp:
                     return json.loads(resp.read().decode("utf-8"))
             except urllib.error.HTTPError as e:
                 detail = _scrub(e.read().decode("utf-8", "replace")[:300], self._key)
                 last = f"HTTP {e.code}: {detail}"
-                if e.code in (400, 401, 403, 404, 422):  # 재시도해도 소용없는 오류
+                if e.code in (400, 401, 403, 404, 422) or 300 <= e.code < 400:  # 재시도해도 소용없는 오류(리다이렉트 포함)
                     raise LLMError(last) from None
                 retry_after = e.headers.get("Retry-After")
                 delay = float(retry_after) if retry_after and retry_after.isdigit() else 2 ** (attempt + 1)
-            except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
+            except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.HTTPException, ValueError) as e:
+                # 응답이 중간에 끊기거나(IncompleteRead) JSON이 아닌 응답(JSONDecodeError)도 일시 장애로 보고 재시도한다
                 last = _scrub(f"{type(e).__name__}: {e}", self._key)
                 delay = 2 ** (attempt + 1)
-            time.sleep(min(delay, 60))
+            if attempt < self.max_retries - 1:  # 마지막 시도 뒤에는 기다릴 이유가 없다
+                time.sleep(min(delay, 60))
         raise LLMError(f"재시도 {self.max_retries}회 실패: {last}")
 
     def _messages(self, system, user):

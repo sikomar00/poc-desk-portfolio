@@ -26,9 +26,12 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 
-sys.stdout.reconfigure(encoding="utf-8")
+if hasattr(sys.stdout, "reconfigure"):  # 출력이 파일·테스트용 버퍼로 바뀐 상태에서 불러와도 죽지 않게
+    sys.stdout.reconfigure(encoding="utf-8")
 HERE = Path(__file__).resolve().parent
 DB = HERE.parent / "data" / "poc_desk_sample.db"
+RUNS_DIR = HERE / "runs"            # 실제 실행 기록 (테스트는 임시 폴더로 바꿔서 쓴다)
+RUNS_MOCK_DIR = HERE / "runs_mock"  # 모의 실행 기록 (Git 제외)
 
 # ---- 사전 고정된 판정 기준 (06 §1) ----
 H1_SUPPORT_ACC_GAIN_PP = 15.0   # B 정확도가 A보다 이만큼(%p) 이상 높고
@@ -95,7 +98,10 @@ def build_user_prompt(cond, schema, dict_text, question):
 
 
 # ---- SQL 추출·안전 검사·실행 ----
-FORBIDDEN = re.compile(r"\b(insert|update|delete|drop|alter|create|attach|detach|pragma|replace|vacuum|reindex|truncate)\b", re.I)
+# 방어는 두 겹이다. 1차는 정규식 사전 검사(사람이 읽을 사유를 알려 줌), 2차는 아래 sqlite 허용 규칙(authorizer)과
+# 읽기 전용 연결이다. 정규식은 우회될 수 있으므로 실제 보장은 2차에 있다.
+FORBIDDEN = re.compile(r"\b(insert|update|delete|drop|alter|create|attach|detach|pragma|vacuum|reindex|truncate)\b"
+                       r"|\breplace\s+into\b", re.I)  # REPLACE() 함수는 정상 SQL이라 막지 않는다 ('REPLACE INTO'만 쓰기)
 
 
 def extract_sql(text):
@@ -104,25 +110,49 @@ def extract_sql(text):
     return sql.rstrip(";").strip()
 
 
+def _strip_literals(sql):
+    """검사용: 문자열 리터럴과 주석을 지운다. 그 안의 단어나 세미콜론이 검사를 속이거나 오탐하지 않게 한다."""
+    s = re.sub(r"'(?:[^']|'')*'", "''", sql)
+    s = re.sub(r"--[^\n]*", " ", s)
+    return re.sub(r"/\*.*?\*/", " ", s, flags=re.S)
+
+
 def safety_check(sql):
     """통과하면 None, 막으면 사유 문자열."""
     if not sql:
         return "empty"
-    if ";" in sql:
+    plain = _strip_literals(sql)
+    if ";" in plain:
         return "multiple_statements"
-    head = sql.lstrip("( \n\t").lower()
+    head = plain.lstrip("( \n\t").lower()
     if not (head.startswith("select") or head.startswith("with")):
         return "not_select"
-    stripped = re.sub(r"'[^']*'", "''", sql)  # 문자열 안의 단어는 무시
-    if FORBIDDEN.search(stripped):
+    if FORBIDDEN.search(plain):
         return "forbidden_keyword"
-    if re.search(r"\b(" + "|".join(HIDDEN_TABLES) + r")\b", stripped, re.I):
+    if re.search(r"\b(" + "|".join(HIDDEN_TABLES) + r")\b", plain, re.I):
         return "hidden_table"  # 정답표 접근 시도
     return None
 
 
+_DENIED_TABLES = {t.lower() for t in HIDDEN_TABLES} | {"sqlite_master", "sqlite_schema", "sqlite_temp_master", "sqlite_temp_schema"}
+_DENIED_FUNCTIONS = {"load_extension", "readfile", "writefile"}
+
+
+def _authorizer(action, arg1, arg2, dbname, source):
+    """sqlite가 문장을 준비할 때마다 묻는 허용 규칙: SELECT와 허용된 테이블 읽기만 통과시킨다."""
+    if action in (sqlite3.SQLITE_SELECT, sqlite3.SQLITE_RECURSIVE):
+        return sqlite3.SQLITE_OK
+    if action == sqlite3.SQLITE_READ:  # arg1 = 테이블 이름
+        return sqlite3.SQLITE_DENY if (arg1 or "").lower() in _DENIED_TABLES else sqlite3.SQLITE_OK
+    if action == sqlite3.SQLITE_FUNCTION:  # arg2 = 함수 이름
+        name = (arg2 or "").lower()
+        return sqlite3.SQLITE_DENY if name.startswith("pragma_") or name in _DENIED_FUNCTIONS else sqlite3.SQLITE_OK
+    return sqlite3.SQLITE_DENY  # INSERT, UPDATE, DELETE, ATTACH, PRAGMA 등 나머지는 모두 거부
+
+
 def execute_readonly(sql, timeout_s=5):
     con = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
+    con.set_authorizer(_authorizer)
     start = time.monotonic()
     con.set_progress_handler(lambda: 1 if time.monotonic() - start > timeout_s else 0, 100000)
     try:
@@ -202,7 +232,7 @@ def summarize(path):
     if meta.get("suite", "main") != "main":
         sys.exit("이 기록은 보류 질문(holdout) 실험입니다. 사전 지정 평가: python experiment/evaluate_v2.py")
     print(f"파일: {path}\n모델={meta['model']} 온도={meta['temperature']} 실행 수={len(runs)}"
-          f"{'  *** MOCK: 실험 결과가 아님 ***' if meta['model'] == 'MOCK' else ''}\n")
+          f"{'  *** MOCK: 실험 결과가 아님 ***' if meta['model'].startswith('MOCK') else ''}\n")
     res = {}
     for cond in ("A", "B"):
         rs = [r for r in runs if r["cond"] == cond]
@@ -280,22 +310,37 @@ def main():
         plan = plan[:a.limit]
 
     if a.mock:
-        client, outdir = MockClient(a.mock_model), HERE / "runs_mock"
+        client, outdir = MockClient(a.mock_model), RUNS_MOCK_DIR
     else:
         if not a.model:
             sys.exit("--model 이 필요합니다 (예: python experiment/llm_client.py models 로 확인)")
         from llm_client import LLMClient, LLMError  # noqa: E402
         client = LLMClient(a.model, a.temperature, max_tokens=a.max_tokens, rpm=a.rpm,
                            timeout=a.timeout, merge_system=a.merge_system)
-        outdir = HERE / "runs"
+        outdir = RUNS_DIR
     outdir.mkdir(exist_ok=True)
     slug = re.sub(r"[^A-Za-z0-9.-]+", "_", client.model.split("/")[-1])[:24]  # 같은 초에 다른 모델을 시작해도 파일이 겹치지 않게
     run_id = a.run_id or datetime.now().strftime("%Y%m%d-%H%M%S") + f"-{slug}" + ("-mock" if a.mock else "")
     path = outdir / f"{run_id}.jsonl"
 
+    # 이어서 실행할 때 기존 기록의 조건과 같은지 확인하기 위한 기준값 (메타의 '실험 조건' 부분)
+    expected = {"model": client.model, "temperature": a.temperature if not a.mock else 0.0,
+                "max_tokens": a.max_tokens if not a.mock else None, "suite": a.suite,
+                "questions_hash": sha(json.dumps(questions, ensure_ascii=False, sort_keys=True)),
+                "dictionary_hashes": {c: (sha(t) if t else None) for c, t in dict_texts.items()}}
     done = set()
     if path.exists():
-        for l in path.read_text(encoding="utf-8").splitlines():
+        lines = path.read_text(encoding="utf-8").splitlines()
+        try:
+            old_meta = json.loads(lines[0])
+        except (IndexError, ValueError):
+            sys.exit(f"이어서 실행할 수 없습니다: {path.name} 의 첫 줄(메타)을 읽을 수 없습니다.")
+        # 옛 기록에 없는 항목은 비교하지 않는다. 한 파일에 서로 다른 조건의 호출이 섞이는 것을 막는 것이 목적이다.
+        diff = [f"{k}: 기록 {old_meta[k]!r} / 지금 {v!r}" for k, v in expected.items() if k in old_meta and old_meta[k] != v]
+        if diff:
+            sys.exit("이어서 실행할 수 없습니다. 기존 기록과 실험 조건이 다릅니다.\n  " + "\n  ".join(diff)
+                     + "\n같은 조건으로 다시 실행하거나, 새 실행 ID로 시작하세요.")
+        for l in lines[1:]:
             r = json.loads(l)
             if r.get("type") == "run" and r.get("status") != "llm_error":  # 서비스 장애로 실패한 호출은 이어서 실행할 때 다시 시도
                 done.add(r["run_key"])
@@ -316,8 +361,11 @@ def main():
     todo = [(c, q, r) for c, q, r in plan if f"{c}|{q['id']}|{r}" not in done]
     print(f"실행 ID={run_id}  남은 호출 {len(todo)}/{len(plan)}  모델={client.model}  -> {path}")
     write_lock = threading.Lock()
+    abort = threading.Event()  # 인증 실패처럼 계속해도 소용없을 때 남은 호출을 시작하지 않게 한다
 
     def do_one(task):
+        if abort.is_set():
+            return None
         cond, q, rep = task
         run_key = f"{cond}|{q['id']}|{rep}"
         user = build_user_prompt(cond, schema, dict_texts[cond], q["question"])
@@ -343,6 +391,7 @@ def main():
             rec["correct"] = is_match(q["metric"], rec["value"], q["gold_value"])
         except Exception as e:  # 호출 실패는 오답으로 기록하되 실험은 계속
             if type(e).__name__ == "LLMError" and "HTTP 401" in str(e):
+                abort.set()
                 raise AuthAbort(str(e)) from None
             rec["status"], rec["error"] = "llm_error", str(e)[:200]
         with write_lock:  # 여러 스레드가 같은 파일에 쓰므로 한 줄씩 순서대로

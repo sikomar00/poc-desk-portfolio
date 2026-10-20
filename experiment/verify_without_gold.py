@@ -15,26 +15,29 @@ import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 
-sys.stdout.reconfigure(encoding="utf-8")
+if hasattr(sys.stdout, "reconfigure"):  # 출력이 파일·테스트용 버퍼로 바뀐 상태에서 불러와도 죽지 않게
+    sys.stdout.reconfigure(encoding="utf-8")
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-from run_experiment import TOLERANCE  # noqa: E402  (지표별 일치 허용 오차를 채점과 똑같이 쓴다)
+import verification as V  # noqa: E402  (방법 1·3 규칙은 사전 지정 평가기와 같은 코드를 쓴다)
+from verification import agree  # noqa: E402
 
 METRIC_OF = {q["id"]: q["metric"] for q in json.loads((HERE / "questions_A.json").read_text(encoding="utf-8"))}
 
 
-def agree(metric, a, b):
-    return a is not None and b is not None and abs(a - b) <= TOLERANCE[metric]
-
-
 def load(cond="B"):
-    data = {}
+    """본 실험(main) 기록만 읽는다. 같은 모델 이름의 보류 질문(holdout)·스모크 기록이 섞여 들어와
+    본 실험 기록을 덮어쓰면 안 된다. 모델마다 호출이 가장 많은 기록 하나를 쓴다."""
+    best = {}
     for f in sorted((HERE / "runs").glob("*.jsonl")):
         rows = [json.loads(l) for l in f.read_text(encoding="utf-8").splitlines() if l.strip()]
         meta = next(r for r in rows if r.get("type") == "meta")
-        data[meta["model"]] = {(r["qid"], r["rep"]): r for r in rows
-                               if r.get("type") == "run" and r["cond"] == cond}
-    return data
+        if meta.get("suite", "main") != "main":
+            continue
+        runs = {(r["qid"], r["rep"]): r for r in rows if r.get("type") == "run" and r["cond"] == cond}
+        if meta["model"] not in best or len(runs) >= len(best[meta["model"]]):
+            best[meta["model"]] = runs
+    return best
 
 
 # ---- 방법 1: 교차 모델 일치 ----
@@ -45,7 +48,7 @@ def method1(data):
         other = [x for x in models if x != m][0]
         for key, r in data[m].items():
             o = data[other].get(key)
-            if o is None or not agree(METRIC_OF[key[0]], r["value"], o["value"]):
+            if o is None or V.cross_model_flag(METRIC_OF[key[0]], r["value"], o["value"]):
                 flagged.add((m, key))
     return flagged
 
@@ -103,8 +106,7 @@ def method3(data, need_agree):
     for m, runs in data.items():
         for q, met in METRIC_OF.items():
             vals = [runs[(q, rep)]["value"] for rep in range(1, 6) if (q, rep) in runs]
-            best = max((sum(agree(met, a, b) for b in vals) for a in vals if a is not None), default=0)
-            if best < need_agree:
+            if V.repeat_flag(met, vals, need_agree):
                 for rep in range(1, 6):
                     flagged.add((m, (q, rep)))
     return flagged
@@ -117,10 +119,14 @@ def score(name, flagged, answers, rows):
     fa = sum(a in flagged for a in right)
     n_flag = det + fa
     prec = det / n_flag if n_flag else 0.0
-    base = len(wrong) / len(answers)
-    print(f"  {name:34s} 검출 {det:>3d}/{len(wrong):<3d}({det / len(wrong) * 100:3.0f}%) "
-          f"거짓경보 {fa:>3d}/{len(right):<3d}({fa / len(right) * 100:3.0f}%) "
-          f"경보 정밀도 {prec * 100:3.0f}% (아무 답이나 찍으면 {base * 100:.0f}%, {prec / base:.1f}배)")
+    base = len(wrong) / len(answers) if answers else 0.0
+
+    def ratio(n, d):  # 오답이나 정답이 0건인 기록(아주 좋거나 아주 나쁜 경우)에서도 0으로 나누지 않는다
+        return f"{n / d * 100:3.0f}%" if d else " n/a"
+    lift = f"{prec / base:.1f}배" if base else "n/a"
+    print(f"  {name:34s} 검출 {det:>3d}/{len(wrong):<3d}({ratio(det, len(wrong))}) "
+          f"거짓경보 {fa:>3d}/{len(right):<3d}({ratio(fa, len(right))}) "
+          f"경보 정밀도 {prec * 100:3.0f}% (아무 답이나 찍으면 {base * 100:.0f}%, {lift})")
     return det, fa
 
 

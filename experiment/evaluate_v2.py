@@ -14,8 +14,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import run_experiment as R  # noqa: E402  (채점 허용 오차, 해시, 사전 렌더링을 실험과 똑같이 쓴다)
+import verification as V  # noqa: E402  (방법 1·3' 규칙: 소급 시험과 같은 코드를 쓴다)
 
-sys.stdout.reconfigure(encoding="utf-8")
+if hasattr(sys.stdout, "reconfigure"):  # 출력이 파일·테스트용 버퍼로 바뀐 상태에서 불러와도 죽지 않게
+    sys.stdout.reconfigure(encoding="utf-8")
 HERE = Path(__file__).resolve().parent
 
 # ---- 사전 고정 규칙 (실행 전) ----
@@ -50,13 +52,19 @@ def load_runs(paths):
 
 
 def find_latest(mock):
+    """모델마다 holdout 기록 하나를 고른다. 호출이 가장 많은(완전한) 기록을 우선하고, 같으면 더 나중 것을 쓴다.
+    (본 실험 뒤에 스모크 테스트를 다시 돌려도 4회짜리 기록이 평가에 뽑히지 않게 한다)"""
     d = HERE / ("runs_mock" if mock else "runs")
     best = {}
     for f in sorted(d.glob("*.jsonl")):
-        first = json.loads(f.read_text(encoding="utf-8").splitlines()[0])
-        if first.get("suite") == "holdout":
-            best[first["model"]] = f
-    return list(best.values())
+        lines = [json.loads(l) for l in f.read_text(encoding="utf-8").splitlines() if l.strip()]
+        if not lines or lines[0].get("suite") != "holdout":
+            continue
+        size = sum(1 for r in lines if r.get("type") == "run")
+        model = lines[0]["model"]
+        if model not in best or size >= best[model][0]:
+            best[model] = (size, f)
+    return [f for _, f in best.values()]
 
 
 def check_frozen(metas):
@@ -90,11 +98,7 @@ def verdict_primary(gain_t, delta_c):
     return "불명"
 
 
-# ---- 방법 1, 3' (verify_without_gold.py 와 같은 규칙) ----
-def agree(metric, a, b):
-    return a is not None and b is not None and abs(a - b) <= R.TOLERANCE[metric]
-
-
+# ---- 방법 1, 3' (규칙은 verification.py 에 한 벌만 있다. verify_without_gold.py 와 공유) ----
 def flags_method1(by_model, cond, metric_of):
     flagged = set()
     models = list(by_model)
@@ -105,7 +109,7 @@ def flags_method1(by_model, cond, metric_of):
             if r["cond"] != cond:
                 continue
             o = idx.get((r["qid"], r["rep"]))
-            if o is None or not agree(metric_of[r["qid"]], r["value"], o["value"]):
+            if o is None or V.cross_model_flag(metric_of[r["qid"]], r["value"], o["value"]):
                 flagged.add((m, r["qid"], r["rep"]))
     return flagged
 
@@ -118,9 +122,7 @@ def flags_method3(by_model, cond, metric_of):
             if r["cond"] == cond:
                 by_q[r["qid"]].append(r)
         for q, rs in by_q.items():
-            vals = [r["value"] for r in rs]
-            best = max((sum(agree(metric_of[q], a, b) for b in vals) for a in vals if a is not None), default=0)
-            if best < REPEAT_NEED:
+            if V.repeat_flag(metric_of[q], [r["value"] for r in rs], REPEAT_NEED):
                 for r in rs:
                     flagged.add((m, q, r["rep"]))
     return flagged
@@ -171,6 +173,12 @@ def main():
     for m, runs in by_model.items():
         if len(runs) != expect:
             print(f"경고: {m} 의 호출 수가 {len(runs)}회(기대 {expect}회). 미완료 실행이면 판정이 왜곡됩니다.")
+    # 호출이 하나도 없는 (모델, 조건, 질문)이 있으면 불완전한 기록이다. 스모크 테스트 같은 부분 기록으로 판정하지 않는다.
+    missing = [(m.split("/")[-1], c, q["id"]) for m, runs in by_model.items() for c in ("B1", "B2") for q in questions
+               if not any(r["cond"] == c and r["qid"] == q["id"] for r in runs)]
+    if missing and "--allow-partial" not in sys.argv:
+        sys.exit(f"불완전한 기록입니다: 호출이 하나도 없는 (모델, 조건, 질문)이 {len(missing)}개입니다(예: {missing[:3]}).\n"
+                 "본 실험을 끝까지 실행한 기록인지 확인하세요. 부분 기록을 일부러 보려면 --allow-partial 을 붙이세요(판정에는 쓰지 않음).")
 
     print("== 질문 1: 사전 v2가 v1보다 나은가 (사전 지정 규칙) ==")
     print(f"  규칙: 표적 정확도 +{GAIN_TARGETED_PP:.0f}%p 이상이고 대조 정확도 변화 {REGRESSION_CONTROL_PP:.0f}%p 이상이면 '개선(회귀 없음)', "
@@ -182,13 +190,17 @@ def main():
         for grp in ("표적", "대조", None):
             name = grp or "전체"
             b1, b2 = acc(runs, "B1", grp, qgroup), acc(runs, "B2", grp, qgroup)
-            d = (b2[0] / b2[1] - b1[0] / b1[1]) * 100
+            d = (b2[0] / b2[1] - b1[0] / b1[1]) * 100 if b1[1] and b2[1] else None  # 한쪽 호출이 0건이면 계산하지 않는다
             out[name] = d
             lo1, hi1 = R.wilson(*b1)
             lo2, hi2 = R.wilson(*b2)
+            diff_text = f"{d:+.0f}%p" if d is not None else "계산 불가(호출 없음)"
             print(f"    {name:3s} 질문  B1(v1) {pct(*b1):>14s} [{lo1 * 100:.0f}~{hi1 * 100:.0f}%]   "
-                  f"B2(v2) {pct(*b2):>14s} [{lo2 * 100:.0f}~{hi2 * 100:.0f}%]   차이 {d:+.0f}%p")
-        print(f"    판정: {verdict_primary(out['표적'], out['대조'])}")
+                  f"B2(v2) {pct(*b2):>14s} [{lo2 * 100:.0f}~{hi2 * 100:.0f}%]   차이 {diff_text}")
+        if out["표적"] is None or out["대조"] is None:
+            print("    판정: 판정 불가(호출이 없는 구간이 있음)")
+        else:
+            print(f"    판정: {verdict_primary(out['표적'], out['대조'])}")
     print("\n  지표별 (모델 합산, 5회×2모델=10회 중 정답):")
     for metric in R.TOLERANCE:
         qs = [q["id"] for q in questions if q["metric"] == metric]
@@ -199,10 +211,12 @@ def main():
             rs = [r for r in all_runs if r["cond"] == cond and r["qid"] in qs]
             cells.append(f"{sum(r['correct'] for r in rs)}/{len(rs)}")
         print(f"    {metric:12s} 질문 {len(qs)}개  B1 {cells[0]:>6s} -> B2 {cells[1]:>6s}")
+    def mean_consistency(runs, cond):
+        per_q = [R.consistency(vals, R.TOLERANCE[q["metric"]]) for q in questions
+                 if (vals := [r["value"] for r in runs if r["cond"] == cond and r["qid"] == q["id"]])]
+        return f"{sum(per_q) / len(per_q) * 100:.0f}%" if per_q else "-"  # 호출이 없는 질문은 평균에서 뺀다
     print("\n  일치율(참고, 판정 규칙 아님): " + ", ".join(
-        f"{m.split('/')[-1]} {c} "
-        f"{sum(R.consistency([r['value'] for r in runs if r['cond'] == c and r['qid'] == q['id']], R.TOLERANCE[q['metric']]) for q in questions) / len(questions) * 100:.0f}%"
-        for m, runs in by_model.items() for c in ("B1", "B2")))
+        f"{m.split('/')[-1]} {c} {mean_consistency(runs, c)}" for m, runs in by_model.items() for c in ("B1", "B2")))
 
     print(f"\n== 질문 2: 검증 방법 1·3'의 재현 (사전 지정 규칙) ==")
     print(f"  규칙: 경보 정밀도 ≥ 기준선의 {LIFT_OK}배 이고 오답 검출 ≥ {DETECT_OK * 100:.0f}% 면 '재현됨', "
