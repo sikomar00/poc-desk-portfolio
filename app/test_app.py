@@ -616,6 +616,32 @@ class PublicDemo(unittest.TestCase):
         finally:
             engine.BACKEND, db.record_run = saved
 
+    def test_reader_always_uses_session_mode_and_service_uses_the_configured_port(self):
+        """읽기 전용 계산 역할은 SET search_path 가 필요해 항상 세션 모드(5432). 서비스 역할은 설정한 포트(서버리스에서는 6543)."""
+        ports, sent = [], []
+
+        class FakeConn:
+            def run(self, stmt, **kw):
+                sent.append(stmt)
+                return []
+
+            def close(self):
+                pass
+
+        saved = (db.POOLER_PORT, db._connect)
+        db._connect = lambda role, pw, port: ports.append((role, port)) or FakeConn()
+        try:
+            svc = db._Session("app_service", "PW", port=6543)
+            svc._open()
+            rd = db._Session("poc_reader_demo", "PW", search_path="demo")
+            rd._open()
+            self.assertEqual(ports, [("app_service", 6543), ("poc_reader_demo", 5432)])
+            self.assertEqual(sum("search_path" in x for x in sent), 1)  # 읽기 전용 역할에만 보낸다
+            self.assertEqual(db._reader.port or db.SESSION_PORT, 5432)
+            self.assertIsNone(db._reader.port)
+        finally:
+            db.POOLER_PORT, db._connect = saved
+
     def test_connections_are_closed_per_request_when_not_persistent(self):
         class FakeConn:
             closed = False
