@@ -1,6 +1,6 @@
-# PoC Desk 데이터 도메인
+# realDefinition 데이터 도메인
 
-지표 정의가 사람·모델마다 달라지는 문제를 다루는 PoC Desk에서, 데이터를 어디에 어떤 이름으로 두는지 정리한 용어집이다. 일반 개념 설명은 `docs/00-glossary.md`에 있다.
+지표 정의가 사람·모델마다 달라지는 문제를 다루는 realDefinition 프로젝트(웹앱 PoC Desk 포함)에서, 데이터를 어디에 어떤 이름으로 두는지 정리한 용어집이다. 일반 개념 설명은 `docs/00-glossary.md`에 있다.
 
 ## Language
 

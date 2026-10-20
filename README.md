@@ -1,11 +1,13 @@
 ---
 id: README
-title: PoC Desk — 문제 정의 프레임워크 포트폴리오
+title: realDefinition — 문제 정의 프레임워크 포트폴리오
 status: draft
 updated: 2026-10-19
 ---
 
-# PoC Desk — 문제 정의 프레임워크 포트폴리오
+# realDefinition — 문제 정의 프레임워크 포트폴리오
+
+> 저장소: [sikomar00/realDefinition](https://github.com/sikomar00/realDefinition) · 이 저장소에서 만든 로컬 웹앱의 이름이 **PoC Desk**입니다.
 
 > **처음 보시는 분은 [PORTFOLIO.md](PORTFOLIO.md)(1~2분 요약)부터 읽으세요.** 아래는 전체 문서 목차입니다.
 

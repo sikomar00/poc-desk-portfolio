@@ -1,6 +1,7 @@
 # 포트폴리오 요약 — "같은 질문, 다른 숫자" 문제를 정의하고 검증하기
 
 > 모호한 요구를 검증 가능한 과제로 바꾸고, 만들어 보고, 숫자와 기록으로 증명한 프로젝트
+> 저장소: [sikomar00/realDefinition](https://github.com/sikomar00/realDefinition) (웹앱 이름: PoC Desk)
 > 지원: 세일링스톤 **AI-BI 엔지니어** / **신기술 R&D 및 PoC 엔지니어** (인턴 6기)
 > 작성일: 2026-10-19 · 전체 근거 문서 목차는 [README](README.md)
 
