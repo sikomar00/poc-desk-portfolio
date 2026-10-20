@@ -12,6 +12,7 @@ TMP = tempfile.mkdtemp(prefix="pocdesk-test-")
 os.environ["POC_DESK_DATA_DIR"] = str(Path(TMP) / "data")
 os.environ["POC_DESK_REPORT_DIR"] = str(Path(TMP) / "reports")
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import db  # noqa: E402
 import engine  # noqa: E402
 import server  # noqa: E402
 
@@ -396,6 +397,115 @@ class Http(unittest.TestCase):
             self.assertTrue(json.loads(d)["llm_key"])
         finally:
             del os.environ["NVIDIA_API_KEY"]
+
+
+class SupabaseBackend(unittest.TestCase):
+    """Supabase 모드의 규칙을 가짜 연결로 시험한다(네트워크·비밀번호 불필요). 로그인 검증과 DB 호출은 대체한다."""
+    @classmethod
+    def setUpClass(cls):
+        cls.srv = server.make_server(0)
+        cls.port = cls.srv.server_address[1]
+        threading.Thread(target=cls.srv.serve_forever, daemon=True).start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.srv.shutdown()
+        cls.srv.server_close()
+
+    req = Http.req
+    post = Http.post
+
+    OWNER = {"id": "00000000-0000-0000-0000-000000000001", "email": "owner@example.com"}
+
+    def setUp(self):
+        self._saved = (engine.BACKEND, db.verify_token, engine.history, engine.run_query, engine.get_run, engine.make_report,
+                       server.SUPABASE_ORIGIN)
+        engine.BACKEND = "supabase"
+        os.environ.setdefault("SUPABASE_URL", "https://example.supabase.co")
+        os.environ.setdefault("SUPABASE_ANON_KEY", "anon-public-key")
+        db.verify_token = lambda tok: self.OWNER if tok == "good-token" else None
+        self.calls = []
+        engine.history = lambda limit=50, user_id=None: self.calls.append(("history", user_id)) or [{"id": "r1"}]
+        engine.run_query = lambda q, mk, months, mode="reference", model=None, user_id=None: self.calls.append(("run", user_id)) or {"id": "r2"}
+        engine.make_report = lambda run_id, user_id=None: self.calls.append(("report", user_id)) or {"filename": "x.md", "path": "x", "markdown": "x"}
+
+    def tearDown(self):
+        (engine.BACKEND, db.verify_token, engine.history, engine.run_query, engine.get_run, engine.make_report,
+         server.SUPABASE_ORIGIN) = self._saved
+
+    AUTH = {"Authorization": "Bearer good-token"}
+
+    def test_history_and_report_need_login(self):
+        self.assertEqual(self.req("GET", "/api/history")[0], 401)
+        self.assertEqual(self.req("GET", "/api/history", headers={"Authorization": "Bearer bad-token"})[0], 401)
+        self.assertEqual(self.post("/api/report", {"run_id": "x"})[0], 401)
+        s, _, d = self.req("GET", "/api/history", headers=self.AUTH)
+        self.assertEqual(s, 200)
+        self.assertEqual(self.calls, [("history", self.OWNER["id"])])  # 본인 번호로만 조회한다
+
+    def test_saving_a_custom_definition_needs_login(self):
+        body = {"name": "재구매율", "formula": "a", "include_exclude": "b", "period_basis": "c", "unit": "%"}
+        self.assertEqual(self.post("/api/definition", body)[0], 401)
+
+    def test_public_demo_can_run_without_login_and_logged_in_run_carries_user_id(self):
+        body = {"question": "q", "metric_key": "net_revenue", "months": ["2026-01"], "mode": "reference"}
+        self.assertEqual(self.post("/api/run", body)[0], 200)
+        self.assertEqual(self.post("/api/run", body, headers=self.AUTH)[0], 200)
+        self.assertEqual(self.calls, [("run", None), ("run", self.OWNER["id"])])
+
+    def test_status_reports_backend_and_never_leaks_secrets(self):
+        s, _, d = self.req("GET", "/api/status")
+        st = json.loads(d)
+        self.assertEqual(st["backend"], "supabase")
+        self.assertIsNone(st["user"])
+        self.assertEqual(set(st["auth"]), {"url", "anon_key"})  # 공개 값만: 비밀번호·서비스 키는 화면으로 나가지 않는다
+        for secret in ("PASSWORD", "service_role"):
+            self.assertNotIn(secret, d.decode())
+        s, _, d = self.req("GET", "/api/status", headers=self.AUTH)
+        self.assertEqual(json.loads(d)["user"], {"email": "owner@example.com"})
+
+
+class DatabaseDialects(unittest.TestCase):
+    def test_default_backend_is_local_sqlite(self):
+        self.assertEqual(engine.BACKEND, "sqlite")
+        self.assertFalse(db.enabled())
+
+    def test_postgres_reference_sql_uses_postgres_syntax_for_all_metrics(self):
+        for metric in engine.UNIT_LABEL:
+            sql = db.gold_sql(metric, ["2026-01", "2026-02"])
+            self.assertNotIn("strftime", sql, metric)
+            self.assertIn("'2026-01','2026-02'", sql)
+            self.assertTrue(sql.lstrip().upper().startswith("SELECT"))
+        self.assertIn("::int", db.gold_sql("cancel_rate", ["2026-01"]))  # SQLite 의 SUM(조건) 은 Postgres 에서 쓸 수 없다
+        with self.assertRaises(ValueError):
+            db.gold_sql("unknown", ["2026-01"])
+
+    def test_postgres_and_sqlite_reference_sql_define_the_same_things(self):
+        """같은 지표는 같은 월 조건·같은 환불 계산식을 쓴다(문법만 다르다). 값 비교는 Supabase 연결 시험에서 한다."""
+        import gold as G
+        for metric in engine.UNIT_LABEL:
+            a, b = db.gold_sql(metric, ["2026-03"]), G.gold_sql(metric, ["2026-03"])
+            for shared in ("o.status='PAID'", "o.status='CANCELLED'", "r.refund_amount * 100 / 110", "'FULL'"):
+                self.assertEqual(shared in a, shared in b, (metric, shared))
+
+    def test_history_in_sqlite_mode_ignores_user_id(self):
+        self.assertEqual(engine.history(5, user_id="anyone"), engine.history(5))
+
+    def test_dotenv_does_not_override_existing_environment(self):
+        path = Path(TMP) / "x.env"
+        path.write_text("POCDESK_T1=from-file\nPOCDESK_T2=only-file\n# 주석\n\n", encoding="utf-8")
+        os.environ["POCDESK_T1"] = "from-env"
+        try:
+            db.load_dotenv(path)
+            self.assertEqual(os.environ["POCDESK_T1"], "from-env")
+            self.assertEqual(os.environ["POCDESK_T2"], "only-file")
+        finally:
+            os.environ.pop("POCDESK_T1", None)
+            os.environ.pop("POCDESK_T2", None)
+
+    def test_token_with_wrong_shape_is_rejected_without_network(self):
+        for bad in (None, "", "abc", "a.b", "a.b.c.d"):
+            self.assertIsNone(db.verify_token(bad))
 
 
 if __name__ == "__main__":
