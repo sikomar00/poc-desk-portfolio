@@ -8,11 +8,13 @@ HTTP와 분리해 두어 단독으로 테스트할 수 있다. 설계는 docs/03
 
 중요: 정답 출처가 없는 지표(사용자가 새로 정의한 지표)는 '검증됨'을 붙이지 않고 '검증 불가'로 표시한다 (결정 D-025).
 """
+import collections
 import hashlib
 import json
 import os
 import re
 import sys
+import threading
 import time
 from datetime import datetime
 from pathlib import Path
@@ -46,24 +48,29 @@ KEYWORDS = {
 
 
 # ---------------------------------------------------------------- 기간 해석
+RANGE_RE = re.compile(r"(\d{1,2})월?(?:[~∼\-–]|부터)(\d{1,2})월")
+
+
 def parse_months(text):
-    """질문에서 월을 찾는다. 반환: {months, invalid, note}. 데이터는 2026-01~03 뿐이다."""
+    """질문에서 월을 찾는다. 반환: {months, invalid, note}. 데이터는 2026-01~03 뿐이다.
+
+    범위("1~2월", "1월부터 3월")는 펼치고, 범위가 아닌 월은 질문에 나온 만큼 모두 합친다
+    ("1월, 2월, 3월"이나 "1~2월과 3월"에서 뒤쪽 월이 빠지지 않게)."""
     t = text.replace(" ", "")
-    nums, note = [], ""
+    nums, note = set(), ""
     if "분기" in t:
-        nums, note = [1, 2, 3], "1분기"
+        nums, note = {1, 2, 3}, "1분기"
     else:
-        m = re.search(r"(\d{1,2})월?[~∼\-–](\d{1,2})월", t) or re.search(r"(\d{1,2})월부터(\d{1,2})월", t)
-        pair = re.search(r"(\d{1,2})월(?:과|와|하고|및|,)(\d{1,2})월", t)
-        if m:
+        for m in RANGE_RE.finditer(t):
             a, b = sorted((int(m.group(1)), int(m.group(2))))
-            nums, note = list(range(a, b + 1)), "범위"
-        elif pair:
-            nums, note = sorted({int(pair.group(1)), int(pair.group(2))}), "두 달"
-        else:
-            nums = sorted({int(x) for x in re.findall(r"(\d{1,2})월", t)})
+            nums.update(range(a, b + 1))
+            note = "범위"
+        rest = RANGE_RE.sub(" ", t)  # 범위로 이미 읽은 부분은 빼고 남은 월을 모은다
+        nums.update(int(x) for x in re.findall(r"(\d{1,2})월", rest))
+        if not note and len(nums) > 1:
+            note = "여러 달"
     months, invalid = [], []
-    for n in nums:
+    for n in sorted(nums):
         label = f"2026-{n:02d}"
         (months if label in VALID_MONTHS else invalid).append(label)
     return {"months": months, "invalid": invalid, "note": note}
@@ -72,16 +79,21 @@ def parse_months(text):
 # ---------------------------------------------------------------- 지표 찾기
 def detect_metrics(question):
     t = question.replace(" ", "")
-    hits = {}
+    hits, names = {}, {k: m["name"] for k, m in BUILTIN_DICT["metrics"].items()}
     for key, kw in KEYWORDS.items():
         strong = [w for w in kw["strong"] if w in t]
         weak = [w for w in kw["weak"] if w in t]
         if strong or weak:
             hits[key] = {"strong": strong, "weak": weak}
+    # 사용자가 정의한 지표도 이름과 다른 말로 찾는다 (정의해 두고도 다시 '사전에 없음'이 되지 않게)
+    for c in _load_custom()["metrics"]:
+        names[c["key"]] = c["name"]
+        matched = [n for n in [c["name"], *c.get("aliases", [])] if n and n.replace(" ", "") in t]
+        if matched:
+            hits[c["key"]] = {"strong": matched, "weak": []}
     strong_keys = [k for k, v in hits.items() if v["strong"]]
     keys = strong_keys if strong_keys else list(hits)
-    return [{"key": k, "name": BUILTIN_DICT["metrics"][k]["name"],
-             "matched": hits[k]["strong"] + hits[k]["weak"]} for k in keys]
+    return [{"key": k, "name": names[k], "matched": hits[k]["strong"] + hits[k]["weak"]} for k in keys]
 
 
 def intake(question):
@@ -99,13 +111,36 @@ def intake(question):
 
 
 # ---------------------------------------------------------------- KPI 사전 (F3)
+_lock = threading.RLock()  # 서버는 요청을 동시에 처리하므로, 파일을 읽고 고쳐 쓰는 구간을 한 번에 하나씩만 실행한다
+
+
 def _custom_path():
     return DATA_DIR / "custom_kpis.json"
 
 
+def _atomic_write(path, text):
+    """임시 파일에 쓴 뒤 교체한다. 쓰는 도중 멈춰도 원래 파일이 깨지지 않는다."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, path)
+
+
 def _load_custom():
     p = _custom_path()
-    return json.loads(p.read_text(encoding="utf-8")) if p.exists() else {"metrics": []}
+    if not p.exists():
+        return {"metrics": []}
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+        if not isinstance(data, dict) or not isinstance(data.get("metrics"), list):
+            raise ValueError("형식이 올바르지 않음")
+        return data
+    except ValueError:
+        # 깨진 파일 하나 때문에 내장 지표까지 못 쓰게 되지 않도록, 옆으로 치워 두고 빈 사전으로 계속한다
+        backup = p.with_name(f"custom_kpis.corrupt-{datetime.now():%Y%m%d-%H%M%S}.json")
+        os.replace(p, backup)
+        sys.stderr.write(f"사용자 정의 사전 파일이 깨져 {backup.name} 으로 옮겼습니다.\n")
+        return {"metrics": []}
 
 
 def _builtin_view(key, m):
@@ -143,23 +178,23 @@ def save_definition(name, aliases, formula, include_exclude, period_basis, unit)
     if name in builtin_names:
         raise ValueError(f"'{name}'은(는) 이미 사전에 있는 지표입니다.")
     key = "custom_" + hashlib.sha1(name.encode("utf-8")).hexdigest()[:8]
-    data = _load_custom()
     now = datetime.now().isoformat(timespec="seconds")
     alias_list = [a.strip() for a in (aliases or []) if a and a.strip()][:8]
     entry = {"key": key, "name": name, "aliases": alias_list, "formula": formula.strip(),
              "include_exclude": include_exclude.strip(), "period_basis": period_basis.strip(),
              "unit": unit.strip(), "version": 1, "created_at": now, "history": []}
-    for i, old in enumerate(data["metrics"]):
-        if old["key"] == key:
-            entry["version"] = old["version"] + 1
-            entry["history"] = old["history"] + [{k: old[k] for k in
-                              ("version", "formula", "include_exclude", "period_basis", "unit", "created_at")}]
-            data["metrics"][i] = entry
-            break
-    else:
-        data["metrics"].append(entry)
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    _custom_path().write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    with _lock:  # 읽고 → 고치고 → 쓰는 구간 전체를 보호해 동시 저장이 서로 덮어쓰지 않게 한다
+        data = _load_custom()
+        for i, old in enumerate(data["metrics"]):
+            if old["key"] == key:
+                entry["version"] = old["version"] + 1
+                entry["history"] = old["history"] + [{k: old[k] for k in
+                                  ("version", "formula", "include_exclude", "period_basis", "unit", "created_at")}]
+                data["metrics"][i] = entry
+                break
+        else:
+            data["metrics"].append(entry)
+        _atomic_write(_custom_path(), json.dumps(data, ensure_ascii=False, indent=2))
     return {**entry, "source": "custom", "version": f"v{entry['version']}", "has_reference": False}
 
 
@@ -175,9 +210,16 @@ def llm_key_status():
     return bool(os.environ.get("NVIDIA_API_KEY"))
 
 
+_clients, _clients_lock = {}, threading.Lock()
+
+
 def _make_client(model):
+    """모델별로 클라이언트를 하나만 만들어 공유한다. 호출 속도 제한(rpm)이 요청마다가 아니라 전체에 적용되게 한다."""
     from llm_client import LLMClient
-    return LLMClient(model, temperature=0.0, max_tokens=4096, rpm=20, timeout=180, max_retries=1)
+    with _clients_lock:
+        if model not in _clients:
+            _clients[model] = LLMClient(model, temperature=0.0, max_tokens=4096, rpm=20, timeout=180, max_retries=1)
+        return _clients[model]
 
 
 def _fmt_ms(t0):
@@ -231,20 +273,26 @@ def reconcile(metric, months, mode, value, reference_value):
     return {"overall": overall, "checks": checks}
 
 
-def _fmt_value(key, v):
+def short_unit(text):
+    """사용자가 적은 단위 설명('%, 소수 둘째 자리 반올림')에서 표시용 단위('%')만 뽑는다."""
+    m = re.match(r"\s*([^,，;(\s]+)", text or "")
+    return m.group(1) if m else ""
+
+
+def _fmt_value(key, v, unit=None):
     if v is None:
         return "-"
-    if key in ("refund_rate", "cancel_rate"):
+    unit = unit if unit is not None else UNIT_LABEL.get(key, "")
+    if unit == "%":
         return f"{v:,.2f}%"
-    if key == "paid_orders":
-        return f"{v:,.0f}건"
-    return f"{v:,.0f}원"
+    num = f"{v:,.0f}" if float(v).is_integer() else f"{v:,.2f}"
+    return f"{num}{unit}"
 
 
 def run_query(question, metric_key, months, mode="reference", model=None):
     """F4~F6: 정의된 지표만 실행한다. 사전에 없는 지표는 거부한다."""
     metric = get_metric(metric_key)
-    months = [m for m in months if m in VALID_MONTHS]
+    months = sorted({m for m in months if isinstance(m, str) and m in VALID_MONTHS})  # 중복 제거(원장 합계가 두 번 더해지지 않게)
     if not months:
         raise ValueError("데이터가 있는 기간(2026년 1~3월)을 하나 이상 선택해 주세요.")
     if mode not in ("reference", "ai"):
@@ -256,14 +304,11 @@ def run_query(question, metric_key, months, mode="reference", model=None):
            "ts": datetime.now().isoformat(timespec="seconds"), "question": question, "metric_key": metric_key,
            "metric_name": metric["name"], "definition_version": metric["version"], "months": months,
            "mode": mode, "model": model if mode == "ai" else None, "sql": None, "value": None,
-           "unit": UNIT_LABEL.get(metric_key, metric["unit"]), "elapsed_ms": None, "status": "OK", "error": None,
+           "unit": UNIT_LABEL.get(metric_key) or short_unit(metric["unit"]), "elapsed_ms": None, "status": "OK", "error": None,
            "reference_value": None, "checks": [], "overall": "ERROR"}
     t0 = time.perf_counter()
     try:
         reference_value = None
-        if metric["has_reference"]:
-            reference_value, _ = R.execute_readonly(gold_sql(metric_key, months))
-            rec["reference_value"] = reference_value
         if mode == "reference":
             rec["sql"] = gold_sql(metric_key, months)
         else:
@@ -278,9 +323,13 @@ def run_query(question, metric_key, months, mode="reference", model=None):
                 rec["status"] = "BLOCKED"
                 raise RuntimeError(f"안전 검사에서 차단되었습니다: {BLOCK_TEXT.get(block, block)}. 읽기 전용 SELECT 한 문장만 실행합니다.")
         rec["value"], shape = R.execute_readonly(rec["sql"])
-        rec["elapsed_ms"] = _fmt_ms(t0)
+        rec["elapsed_ms"] = _fmt_ms(t0)  # 대조용 기준값 계산 시간은 포함하지 않는다
         if rec["value"] is None:
             raise RuntimeError(f"결과가 숫자 하나(1행 1열)가 아닙니다({shape}).")
+        if metric["has_reference"]:
+            # 기준 계산식 방식이면 방금 실행한 값이 곧 기준값이라 다시 실행하지 않는다
+            reference_value = rec["value"] if mode == "reference" else R.execute_readonly(gold_sql(metric_key, months))[0]
+            rec["reference_value"] = reference_value
         rec.update(reconcile(metric, months, mode, rec["value"], reference_value))
     except Exception as e:  # noqa: BLE001  화면에 이유를 보여 주고 기록한다 (F9)
         if rec["status"] == "OK":
@@ -298,27 +347,48 @@ def _history_path():
 
 
 def _append_history(rec):
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    with _history_path().open("a", encoding="utf-8") as f:
-        f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    with _lock:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        with _history_path().open("a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+
+
+def _iter_history():
+    """기록 파일을 한 줄씩 읽는다(전체를 메모리에 올리지 않음). 쓰다 만 깨진 줄은 건너뛴다."""
+    p = _history_path()
+    if not p.exists():
+        return
+    with p.open(encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                yield json.loads(line)
+            except ValueError:
+                continue
 
 
 def history(limit=50):
-    p = _history_path()
-    if not p.exists():
-        return []
-    rows = [json.loads(l) for l in p.read_text(encoding="utf-8").splitlines() if l.strip()]
-    return list(reversed(rows[-limit:]))
+    return list(reversed(collections.deque(_iter_history(), maxlen=limit)))
 
 
 def get_run(run_id):
-    for r in history(10000):
-        if r["id"] == run_id:
-            return r
-    raise ValueError("해당 실행 기록을 찾을 수 없습니다.")
+    found = None
+    for r in _iter_history():  # 기록 개수 상한 없이 전체에서 찾는다
+        if r.get("id") == run_id:
+            found = r
+    if found is None:
+        raise ValueError("해당 실행 기록을 찾을 수 없습니다.")
+    return found
 
 
 # ---------------------------------------------------------------- 리포트 (F7)
+def _md_cell(text):
+    """마크다운 표 칸에 넣을 글: 줄바꿈은 공백 하나로, '|'는 이스케이프해서 표가 깨지지 않게 한다."""
+    return " ".join(str(text).split()).replace("|", chr(92) + "|")
+
+
 BADGE_TEXT = {"PASS": "통과", "FLAG": "경고(불일치)", "UNVERIFIED": "검증 불가", "INFO": "기준 계산식으로 계산", "ERROR": "오류"}
 
 
@@ -331,7 +401,7 @@ def make_report(run_id):
              f"- 기간: {', '.join(r['months'])}", f"- 실행 방식: {mode_text}",
              f"- 정의 버전: {r['definition_version']}", "",
              "## 결과", "",
-             f"**{_fmt_value(r['metric_key'], r['value'])}**" if r["value"] is not None else "결과 없음 (오류)",
+             f"**{_fmt_value(r['metric_key'], r['value'], r.get('unit'))}**" if r["value"] is not None else "결과 없음 (오류)",
              "", f"- 실행 시간: {r['elapsed_ms']} ms",
              f"- 전체 판정: **{BADGE_TEXT.get(r['overall'], r['overall'])}**", ""]
     if r["error"]:
@@ -342,9 +412,9 @@ def make_report(run_id):
     if not r["checks"]:
         lines.append("- 수행된 검사가 없습니다.")
     lines += ["", "## 사용한 정의 (KPI 사전)", "",
-              f"| 항목 | 내용 |", "|---|---|", f"| 계산식 | {metric['formula']} |",
-              f"| 포함·제외 | {metric['include_exclude']} |", f"| 기간 기준 | {metric['period_basis']} |",
-              f"| 단위 | {metric['unit']} |", "", "## 실행한 SQL", "", "```sql", r["sql"] or "(생성되지 않음)", "```", "",
+              "| 항목 | 내용 |", "|---|---|", f"| 계산식 | {_md_cell(metric['formula'])} |",
+              f"| 포함·제외 | {_md_cell(metric['include_exclude'])} |", f"| 기간 기준 | {_md_cell(metric['period_basis'])} |",
+              f"| 단위 | {_md_cell(metric['unit'])} |", "", "## 실행한 SQL", "", "```sql", r["sql"] or "(생성되지 않음)", "```", "",
               "## 읽는 법과 한계", "",
               "- 이 숫자는 합성(가짜) 주문 데이터(2026-01~03)에서 계산한 값입니다. 실제 고객 데이터가 아닙니다.",
               "- '통과'는 정답 출처(원장 또는 사람이 검토한 기준 계산식)와 같다는 뜻이며, 정의 자체가 옳다는 뜻은 아닙니다.",
