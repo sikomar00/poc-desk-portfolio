@@ -14,3 +14,6 @@ experiment/runs_mock/
 # realDefinition 앱이 실행 중 만드는 사용자 데이터(실행 기록, 정의, 리포트)
 app/data/
 app/reports/
+
+# Supabase QA 화면의 접속 설정(생성 파일)
+qa/config.js
