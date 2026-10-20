@@ -111,7 +111,10 @@ async function login(email, password, pwInput) {
   } catch (e) { S.auth.msg = "서버에 연결하지 못했습니다: " + e.message; S.auth.kind = "err"; }
   finally { S.auth.busy = false; if (pwInput) pwInput.value = ""; renderStatus(); renderAccount(); render(); }
 }
-function logout() { clearLogin(); S.auth.open = false; S.notice = ""; renderAccount(); render(); }
+async function logout() {
+  clearLogin(); S.auth.open = false; S.notice = ""; renderAccount(); render();
+  try { S.status = await api("GET", "/api/status"); renderStatus(); renderAccount(); render(); } catch { /* 상태를 못 읽어도 로그아웃은 이미 끝났다 */ }
+}
 
 function render() {
   document.querySelectorAll(".tab").forEach((t) => {
@@ -282,11 +285,12 @@ function runOptions(m) {
     h("input", { type: "radio", name: "mode", "data-fk": "mode-" + value, value, checked: S.mode === value, disabled, onchange: () => { S.mode = value; render(); } }),
     h("span", {}, label, h("span", { class: "muted small" }, " — " + hint)));
   const aiOff = !S.status.llm_key;
+  const aiWhy = S.status.ai_login_required ? "공개 데모에서는 로그인한 본인만 사용할 수 있음 (오른쪽 위에서 로그인)" : "API 키가 없어 사용할 수 없음 (앱을 시작한 창에서 NVIDIA_API_KEY 설정)";
   if (!m.has_reference && S.mode === "reference") S.mode = "ai";
   if (aiOff && m.has_reference) S.mode = "reference";  // 키가 없으면 AI 방식이 선택된 채로 남지 않게
   return h("div", { class: "card" }, h("h2", {}, "실행 방식"),
     radio("reference", "검증된 계산식으로 실행", m.has_reference ? "사람이 검토한 SQL, 즉시 계산" : "이 지표에는 없음", !m.has_reference),
-    radio("ai", "AI가 SQL 생성", aiOff ? "API 키가 없어 사용할 수 없음 (앱을 시작한 창에서 NVIDIA_API_KEY 설정)" : "수십 초에서 몇 분 걸릴 수 있음, 결과는 기준값과 대조", aiOff),
+    radio("ai", "AI가 SQL 생성", aiOff ? aiWhy : "수십 초에서 몇 분 걸릴 수 있음, 결과는 기준값과 대조", aiOff),
     S.mode === "ai" && !aiOff ? [h("label", { for: "model" }, "모델"),
       h("input", { id: "model", type: "text", value: S.model || S.status.default_model, oninput: (e) => { S.model = e.target.value; } })] : null);
 }

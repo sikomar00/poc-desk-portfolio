@@ -147,11 +147,13 @@ class Handler(BaseHTTPRequestHandler):
     def _api_get(self, path, q):
         try:
             if path == "/api/status":
-                st = {"llm_key": engine.llm_key_status(), "default_model": engine.DEFAULT_MODEL,
-                      "data_months": engine.VALID_MONTHS, "backend": engine.BACKEND, "public": PUBLIC}
+                user = self._user()
+                has_key = engine.llm_key_status()
+                # 공개 데모에서는 비용·남용을 막으려고 AI 모드를 로그인한 본인에게만 연다
+                st = {"llm_key": bool(has_key and (user or not PUBLIC)), "ai_login_required": bool(has_key and PUBLIC and not user),
+                      "default_model": engine.DEFAULT_MODEL, "data_months": engine.VALID_MONTHS, "backend": engine.BACKEND, "public": PUBLIC}
                 if engine.BACKEND == "supabase":  # 로그인 화면이 Supabase Auth 로 직접 로그인하는 데 쓰는 공개 값(비밀 아님)
                     st["auth"] = {"url": os.environ.get("SUPABASE_URL"), "anon_key": os.environ.get("SUPABASE_ANON_KEY")}
-                    user = self._user()
                     st["user"] = {"email": user["email"]} if user else None
                 return self._json(st)
             if path == "/api/dictionary":
@@ -241,6 +243,8 @@ class Handler(BaseHTTPRequestHandler):
                                                          body.get("unit")))
             if path == "/api/run":
                 user = self._user()  # 비로그인도 합성 데이터 계산은 가능하다(기록의 user_id 는 비어 있음)
+                if PUBLIC and (body.get("mode") or "reference") == "ai" and not user:
+                    return self._error(401, "공개 데모에서 AI 모드는 로그인한 본인만 쓸 수 있습니다. 검증된 계산식 모드는 로그인 없이 쓸 수 있습니다.")
                 return self._json(engine.run_query(str(body.get("question") or "")[:300], body.get("metric_key"),
                                                    list(body.get("months") or []), body.get("mode") or "reference",
                                                    body.get("model"), user["id"] if user else None))

@@ -222,7 +222,8 @@ def _make_client(model):
     from llm_client import LLMClient
     with _clients_lock:
         if model not in _clients:
-            _clients[model] = LLMClient(model, temperature=0.0, max_tokens=4096, rpm=20, timeout=180, max_retries=1)
+            _clients[model] = LLMClient(model, temperature=0.0, max_tokens=4096, rpm=20,
+                                        timeout=int(os.environ.get("POC_DESK_LLM_TIMEOUT", "180")), max_retries=1)  # 서버리스는 함수 시간 제한이 있어 환경변수로 줄인다
         return _clients[model]
 
 
