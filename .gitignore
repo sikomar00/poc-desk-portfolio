@@ -20,3 +20,6 @@ qa/config.js
 
 # 앱 접속 도구(pg8000) 설치 폴더 — requirements.txt 로 다시 설치
 app/_vendor/
+
+.vercel
+.env*
