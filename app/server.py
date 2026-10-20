@@ -1,4 +1,4 @@
-"""PoC Desk 로컬 웹 서버 (표준 라이브러리만 사용, 설치 불필요).
+"""realDefinition 로컬 웹 서버 (표준 라이브러리만 사용, 설치 불필요).
 
 실행: python app/server.py            → http://127.0.0.1:8765 이 자동으로 열린다
       python app/server.py --port 9000 --no-browser
@@ -184,7 +184,7 @@ def main():
     a = ap.parse_args()
     server = make_server(a.port)
     url = f"http://127.0.0.1:{server.server_address[1]}"
-    print(f"PoC Desk 실행 중: {url}  (끄려면 Ctrl+C)")
+    print(f"realDefinition 실행 중: {url}  (끄려면 Ctrl+C)")
     print("AI 모드:", "API 키 설정됨" if engine.llm_key_status() else "API 키 없음 (검증된 계산식 모드만 사용 가능)")
     if not a.no_browser:
         threading.Timer(0.6, lambda: webbrowser.open(url)).start()

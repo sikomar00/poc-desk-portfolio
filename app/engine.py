@@ -1,4 +1,4 @@
-"""PoC Desk 엔진: 질문 해석, KPI 사전, 실행, 대사, 리포트.
+"""realDefinition 엔진: 질문 해석, KPI 사전, 실행, 대사, 리포트.
 
 HTTP와 분리해 두어 단독으로 테스트할 수 있다. 설계는 docs/03-prd.md 의 F1~F7, F9 를 따른다.
 

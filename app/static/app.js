@@ -1,5 +1,5 @@
 "use strict";
-// PoC Desk 화면 로직. 외부 라이브러리 없이 DOM API만 쓴다. 서버가 준 문자열은 항상 textContent 로 넣는다(XSS 방지).
+// realDefinition 화면 로직. 외부 라이브러리 없이 DOM API만 쓴다. 서버가 준 문자열은 항상 textContent 로 넣는다(XSS 방지).
 
 const S = {
   tab: "ask", step: "ask", question: "", intake: null, metrics: [], metricKey: null, months: [],

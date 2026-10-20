@@ -1,6 +1,6 @@
 """H3 검증: 원장 대사(reconciliation)가 틀린 매출 SQL을 걸러내는가? (LLM 없이 실행 가능)
 
-대사 규칙(PoC Desk F6의 시제품):  |SQL 결과 - 원장| 이 허용 오차 이내면 PASS, 아니면 FLAG.
+대사 규칙(realDefinition F6의 시제품):  |SQL 결과 - 원장| 이 허용 오차 이내면 PASS, 아니면 FLAG.
 
 3단계로 확인한다.
   1) 틀린 SQL 10개(h3_cases.json)를 실행해 FLAG 되는지, 허용 오차를 키우면 놓치는지

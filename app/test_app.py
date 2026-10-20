@@ -1,4 +1,4 @@
-"""PoC Desk 엔진과 서버 테스트.  실행: python app/test_app.py   (추가 설치 없음, 데이터는 임시 폴더에 쓴다)"""
+"""realDefinition 엔진과 서버 테스트.  실행: python app/test_app.py   (추가 설치 없음, 데이터는 임시 폴더에 쓴다)"""
 import http.client
 import json
 import os
@@ -301,7 +301,7 @@ class Http(unittest.TestCase):
     def test_pages_and_security_headers(self):
         s, h, d = self.req("GET", "/")
         self.assertEqual(s, 200)
-        self.assertIn("PoC Desk", d.decode())
+        self.assertIn("realDefinition", d.decode())
         self.assertIn("default-src 'self'", h["Content-Security-Policy"])
         self.assertEqual(self.req("GET", "/app.js")[0], 200)
         self.assertEqual(self.req("GET", "/style.css")[0], 200)
