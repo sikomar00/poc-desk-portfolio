@@ -59,6 +59,8 @@ depends_on: [05-data-design, 12-poc-desk-app]
 이 결정 중 되돌리기 어려운 것은 ADR로 남겼습니다: [0001](adr/0001-three-schemas-in-one-postgres.md), [0002](adr/0002-personal-schema-not-exposed-via-api.md), [0003](adr/0003-keep-all-source-rows-flag-duplicates.md). 결정 로그는 [D-033](02-thinking-log.md).
 
 ## 4. ERD
+> **최신 ERD는 [erd.md](../erd.md)입니다.** 아래는 로그인 도입 전(2026-10-20 초안) 버전입니다.
+
 ```mermaid
 erDiagram
     DEMO_CUSTOMERS ||--o{ DEMO_ORDERS : places

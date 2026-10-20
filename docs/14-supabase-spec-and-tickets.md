@@ -14,13 +14,13 @@ depends_on: [13-supabase-db-plan]
 ## 1. 스펙 결정 (13 문서의 열린 질문을 닫음)
 | # | 질문 | 결정 | 이유 |
 |---|---|---|---|
-| S1 | 본인 확인 방식 | 앱 서버가 환경변수 `POC_DESK_OWNER_TOKEN`과 일치하는 토큰을 요구한다. Supabase Auth는 쓰지 않는다 | 가계부는 브라우저가 DB에 직접 붙지 않으므로(ADR 0002) 로그인 서비스가 필요 없다. 사용자도 1명이다 |
-| S2 | `owner_id` 값 | 고정 UUID 1개를 환경변수 `POC_DESK_OWNER_ID`로 받아 적재 때 넣는다 | RLS를 보조 방어선으로 켜 두기 위한 값 |
+| S1 | 본인 확인 방식 | ~~서버 환경변수 토큰~~ → **D-035로 대체**: Supabase Auth 세션 + `app.profiles` 행 존재. 상세는 [erd.md](../erd.md) | 사용자 구분과 실행 기록이 필요해졌다 |
+| S2 | `owner_id` 값 | ~~고정 UUID~~ → **D-035로 대체**: 로그인한 본인의 `profiles.user_id`를 적재 때 넣는다 | RLS를 보조 방어선으로 켜 두기 위한 값 |
 | S3 | 리포트 파일 | 이번에는 DB로 옮기지 않는다 | 범위 밖(13 문서 1절) |
 | S4 | 대사 허용 오차 | 0 유지(D-024) | 이전으로 기준이 느슨해지면 안 된다 |
 | S5 | 앱 코드 전환 방식 | 접근 계층을 한 곳(`app/db.py`)으로 모으고 SQLite/Postgres를 환경변수로 고른다. SQLite는 기본값으로 남긴다 | 이전 후에도 로컬 테스트 31개가 계속 돌아야 한다 |
 
-> [가정] S1은 이 앱이 본인 PC에서만 켜지는 동안만 안전합니다. 서버를 외부에 배포하면 토큰 방식을 다시 정해야 합니다.
+> **로그인 반영:** DDL에는 `app.profiles`(user_id → `auth.users`, on delete cascade)가 추가되고, `personal.transactions.owner_id`와 `app.query_runs.user_id`가 이를 가리킵니다. `profiles`를 먼저 만들어야 하므로 실행 순서는 `app` → `personal`로 바꿉니다. 아래 2절 DDL 본문은 로그인 도입 전 초안이라 이 변경이 아직 반영되어 있지 않습니다(T2에서 [erd.md](../erd.md) 기준으로 맞춥니다).
 
 ## 2. DDL 초안
 ```sql
@@ -165,4 +165,5 @@ create table app.query_runs (
 - 서버를 외부에 배포할 계획이 생기면 S1 재검토.
 
 ## 변경 이력
+- 2026-10-20 S1·S2를 D-035로 대체 표시(로그인), DDL 갱신은 T2로 이월
 - 2026-10-20 초안 작성 (스펙 결정 S1~S5, DDL 초안, 티켓 T1~T8)
