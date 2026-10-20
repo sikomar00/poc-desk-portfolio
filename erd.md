@@ -161,6 +161,10 @@ erDiagram
         text error
         int elapsed_ms
         jsonb checks
+        text metric_key "display copy"
+        text metric_name "display copy"
+        text definition_version "display copy"
+        text unit "display copy"
     }
 ```
 
@@ -200,4 +204,5 @@ sequenceDiagram
 - 사용자 정의 지표(`kpi_definitions`)에 작성자를 남길지(지금은 남기지 않음).
 
 ## 변경 이력
+- 2026-10-20 app.query_runs에 표시용 열 4개 추가(앱 연결, 마이그레이션 0004)
 - 2026-10-20 초안 작성 (13 문서 ERD에 로그인 반영: profiles, owner_id FK, query_runs.user_id)

@@ -15,6 +15,17 @@ depends_on: [03-prd, 04-journey-and-flow, 09-experiment-v2-results]
 
 **솔직한 상태:** 계산식 모드와 대사, 리포트, 사전, 기록은 테스트와 브라우저로 확인했습니다. **AI 모드는 가짜 LLM으로만 확인했고, 실제 모델로 앱에서 호출해 본 적은 없습니다**(이 환경에 API 키가 없었음).
 
+## Supabase 모드 (합성 데이터를 클라우드 DB에서 읽기)
+기본은 로컬 SQLite 파일이다. Supabase(서울 프로젝트)의 합성 데이터로 돌리려면 `.env`에 접속 정보가 있어야 하고, 서버를 시작하는 창에서 한 줄을 더 설정한다.
+```powershell
+cd C:\realDefinition
+$env:POC_DESK_BACKEND = 'supabase'
+python app/server.py
+```
+- 처음 한 번: `python -m pip install --target app/_vendor -r requirements.txt` (접속 도구 pg8000). `.env`의 값(접속 정보)은 [14 문서](14-supabase-spec-and-tickets.md)와 `app/db.py` 머리말을 본다.
+- 화면 오른쪽 위에 **로그인**이 생긴다. 로그인 없이도 합성 데이터 계산은 되고, **실행 기록·리포트·사용자 정의 저장**은 본인 계정만 한다.
+- 상단 배지에 `데이터: Supabase(서울)` 또는 `데이터: 로컬 SQLite`가 표시된다.
+
 ## 1. 실행 방법
 ```powershell
 cd C:\realDefinition

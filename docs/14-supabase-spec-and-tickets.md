@@ -191,11 +191,37 @@ T1~T3을 Supabase CLI(`npx supabase` 2.121.0)로 진행했습니다. 데이터�
 
 **본인 계정 등록과 가입 닫기:** 대시보드에서 만든 계정(1개)을 `app.profiles`에 등록했고(`display_name`은 이메일 앞부분), `enable_signup = false`를 적용했다. **정정:** 이때 `auth.email.enable_signup`까지 꺼서 이메일 로그인이 막혀 있었고, QA에서 발견해 고쳤다([15 문서](15-supabase-qa-guide.md) 5절). 최종 확인: 설정 조회에서 `disable_signup: true`, 이메일 확인은 계속 꺼짐(`mailer_autoconfirm: true`), 낯선 이메일로 가입을 시도하면 422 `signup_disabled`로 거절되고 계정 수는 1개 그대로였다. [가정] 앞으로 계정이 더 필요하면 대시보드에서 직접 만든다.
 
+## 앱 연결 기록 (2026-10-20, T7 일부 + T8 합성 데이터 경로)
+앱(realDefinition)이 `POC_DESK_BACKEND=supabase` 일 때 Supabase의 합성 데이터로 질문 → 계산 → 정답 대조 → 리포트를 수행한다. 기본값은 SQLite 그대로다(기존 테스트가 같은 조건에서 돈다, D-034).
+
+| 항목 | 내용 |
+|---|---|
+| 접속 도구 | `pg8000`(순수 파이썬)을 `app/_vendor`에만 설치(`requirements.txt`, git 제외). 앱 코드는 `app/db.py` 한 곳을 거친다 |
+| 접속 보안 | Supabase 공식 루트 인증서(`app/certs/prod-ca-2021.crt`)로 서버 신원과 호스트 이름을 검증한다. 모델·계산식 SQL은 `poc_reader_demo`(읽기 전용, 5초 제한, `demo`만), 정의·원장·기록은 `app_service`가 맡는다 |
+| 로그인 | 화면이 Supabase Auth로 직접 로그인하고, 서버는 매 요청의 토큰을 Auth에 확인한 뒤 `app.profiles`에 있는 본인 계정인지 본다(30초 캐시). 토큰은 브라우저 메모리에만 둔다 |
+| 로그인 규칙(Q5) | 비로그인: 합성 데이터 계산 가능(기록의 `user_id` 비어 있음). 로그인(본인): 실행 기록 조회·리포트·사용자 정의 지표 저장. 기록은 본인 것만 보인다 |
+| 시드 | `data/export_app_seed_sql.py`: 내장 지표 5개(버전 2)와 `net_revenue` 월별 원장 3개월을 `app`에 적재(몇 번 실행해도 같다) |
+| 마이그레이션 | `0004`: `app.query_runs`에 표시용 열 4개(`metric_key`·`metric_name`·`definition_version`·`unit`) 추가 |
+
+**검증 결과**
+- 기준 계산식 25개 조합(지표 5 × 기간 5): Supabase와 SQLite의 값이 **전부 같다**(불일치 0).
+- 1분기 매출 62,831,000원이 DB 원장과 정확히 일치(대사 통과). 월별 원장 값도 SQLite와 같다.
+- 브라우저에서 질문 → 정의 확인 → 실행 → 결과·대사 통과, 임시 본인 계정으로 로그인 → 실행 → 리포트 → 기록(1건) → 로그아웃 후 기록 차단까지 확인(임시 계정·기록은 삭제).
+- 모델 경로 SQL이 `app`·`personal` 조회와 쓰기를 DB에서 거부한다(`permission denied`, `read-only transaction`).
+- 테스트: 앱 41개(기존 31 + 신규 10), 실험 32개 모두 통과.
+
+**한계 (솔직하게)**
+- **사용자 정의 지표는 아직 파일**(`app/data/custom_kpis.json`)에 저장한다. DB 이전은 T7의 남은 부분이다. 그래서 사용자 정의 지표를 쓴 실행 기록의 `definition_id`는 비어 있다.
+- **AI 모드는 Postgres에서 실제 모델로 시험하지 못했다**(API 키 없음). 프롬프트는 PostgreSQL 문법 안내로 바꿨고, 모델이 SQLite 문법(`strftime` 등)을 쓰면 오류로 기록된다.
+- 가계부(`personal`)는 아직 앱에 연결하지 않았다(T5·T6 선행).
+- 서버가 로그인 토큰 검증마다 Supabase Auth를 한 번 호출한다(30초 캐시). Supabase가 느리면 로그인 요청이 느려진다.
+
 ## 열린 질문
 - T5의 가명 처리 규칙(가맹점 원문을 어디까지 가릴지).
 - 서버를 외부에 배포할 계획이 생기면 S1 재검토.
 
 ## 변경 이력
+- 2026-10-20 앱 연결(합성 데이터 경로) 기록 추가
 - 2026-10-20 가입 닫기 정정(이메일 로그인 복구), QA 가이드 링크
 - 2026-10-20 본인 계정 등록·가입 닫기 결과 추가
 - 2026-10-20 demo 적재와 대조 결과 추가
