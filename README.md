@@ -56,6 +56,7 @@ python app/server.py
 | 15 | [Supabase QA 가이드](docs/15-supabase-qa-guide.md) | 만든 DB가 정말 동작하나? 직접 눌러 확인하는 방법과 QA가 찾은 문제는? (점검표는 스프레드시트에 따로 기록) | draft |
 
 | 16 | [Vercel 공개 배포](docs/16-vercel-deployment.md) | 인터넷에 어떻게 올렸고, 무엇을 막았고, 배포하면서 무엇이 깨졌나? | draft |
+| 17 | [구현 설계서](docs/17-technical-design.md) | 무슨 라이브러리·버전으로, 어느 파일이 무슨 일을, 어떤 순서로·어떻게 확인하며 만드나? 외부 한도와 위험은? | draft |
 
 코드·데이터: `app/` (realDefinition 로컬 웹앱), `data/` (합성 샘플 DB 생성기, 정의별 검증 스크립트, 가계부 CSV 점검·정의별 계산·앱 합계 대조 스크립트), `experiment/` (실험용 KPI 사전, 질문 20개와 골드 답, H3 테스트 세트). 실데이터는 `data/private/`(Git 제외).
 

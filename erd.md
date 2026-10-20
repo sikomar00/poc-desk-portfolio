@@ -3,7 +3,7 @@ id: erd
 title: realDefinition ERD (로그인 포함, Supabase 이전 목표 구조)
 status: draft
 updated: 2026-10-20
-depends_on: [13-supabase-db-plan, 14-supabase-spec-and-tickets]
+depends_on: [13-supabase-db-plan, 14-supabase-spec-and-tickets, 17-technical-design]
 ---
 
 # realDefinition ERD
@@ -190,6 +190,49 @@ sequenceDiagram
     S-->>U: 결과
 ```
 
+## 테이블 정의표 (실제 DB 기준, 2026-10-20 조회)
+위 그림의 열 단위 정의입니다. **Supabase에서 직접 조회한 값**이고, 변경은 `supabase/migrations/`(0001~0007) 파일로만 합니다. 키: PK 기본키, FK 외래키, UK 유일, `?` 비어 있을 수 있음. 모든 표에서 RLS(행 수준 보안)가 켜져 있습니다.
+
+### `app` — 지표 정의·원장·기록·프로필 (앱 서버 전용, API에 노출하지 않음)
+| 표 | 열 (타입, 키·제약) | 행 | 읽는 코드 | 쓰는 코드 |
+|---|---|---|---|---|
+| `app.profiles` | `user_id` uuid **PK**, FK→`auth.users`(삭제 시 같이 삭제) · `display_name` text · `created_at` timestamptz 기본 `now()` | 1 | `db.verify_token` | 관리자(계정 등록) |
+| `app.kpi_definitions` | `definition_id` bigint **PK**(자동) · `dataset` text(`demo`·`personal`) · `metric_key` text · `version` int · `name` · `aliases` text[] · `formula` · `include_exclude` · `period_basis` · `unit` text · `source` text(`builtin`·`custom`) · `has_reference` bool · `created_at` · **UK**(`dataset`,`metric_key`,`version`) | 5 | `db.definition_id`, `db.ledger_total` | `data/export_app_seed_sql.py`(관리자) |
+| `app.ledger` | `definition_id` bigint FK→`kpi_definitions` · `period_month` text(`YYYY-MM` 형식 검사) · `value` numeric · **PK**(`definition_id`,`period_month`) | 3 | `db.ledger_total` | 시드 스크립트 |
+| `app.query_runs` | `run_id` text **PK** · `user_id` uuid? FK→`profiles` · `ts` timestamptz · `dataset` · `definition_id` bigint? FK · `question` text · `months` text[] · `mode` text(`reference`·`ai`) · `model`? · `sql`? · `value` numeric? · `reference_value` numeric? · `overall` · `status` · `error`? · `elapsed_ms` int? · `checks` jsonb 기본 `[]` · `metric_key`? · `metric_name`? · `definition_version`? · `unit`? | 0 | `db.history`, `db.get_run` | `db.record_run`(추가만) |
+
+색인: `query_runs(user_id, ts desc)`, `query_runs(definition_id)`.
+
+### `demo` — 합성 주문 데이터 (공개 읽기)
+| 표 | 열 (타입, 키·제약) | 행 |
+|---|---|---|
+| `demo.customers` | `customer_id` int **PK** · `name` text · `joined_at` date | 15 |
+| `demo.products` | `product_id` int **PK** · `name` · `category` text · `unit_price_ex_vat` int | 8 |
+| `demo.orders` | `order_id` int **PK** · `customer_id` int FK · `ordered_at` timestamp · `paid_at` timestamp? · `status` text(`PAID`·`CANCELLED`·`PENDING`) · `items_ex_vat`·`vat_amount`·`shipping_fee`·`total_amount` int | 500 |
+| `demo.order_items` | `item_id` int **PK** · `order_id` FK · `product_id` FK · `quantity` int · `unit_price_ex_vat` int | 1,017 |
+| `demo.refunds` | `refund_id` int **PK** · `order_id` FK · `refunded_at` timestamp · `refund_type` text(`FULL`·`PARTIAL`) · `refund_amount` int(부가세 포함) | 52 |
+
+색인: `orders(customer_id)`, `order_items(order_id)`, `order_items(product_id)`, `refunds(order_id)`. 읽는 코드: `db.execute_readonly`·`db.query_rows`·`db.schema_text`·`compare.py`. 쓰는 코드: `data/export_demo_sql.py`(관리자, 몇 번 실행해도 같게 비우고 다시 넣음).
+
+### `personal` — 실제 가계부 (**앱·배포에 연결하지 않음**, 지금은 비어 있음)
+| 표 | 열 (타입, 키·제약) | 행 |
+|---|---|---|
+| `personal.import_batches` | `batch_id` bigint **PK**(자동) · `source_file_sha256` text **UK** · `row_count` int · `loaded_at` timestamptz | 0 |
+| `personal.categories` | `category_id` int **PK**(자동) · `parent_id` int? FK→자기 자신(대/소분류) · `name` text · **UK**(`parent_id`,`name`, 비어 있는 값도 같게 취급) | 0 |
+| `personal.payment_methods` | `payment_method_id` int **PK**(자동) · `name` text **UK** | 0 |
+| `personal.transactions` | `tx_id` bigint **PK**(자동) · `owner_id` uuid FK→`app.profiles` · `batch_id` FK · `source_row_no` int · `occurred_at` timestamptz · `tx_type` text(원본 값) · `category_id` FK · `payment_method_id` FK · `merchant` text · `amount` bigint(원, 부호 유지) · `dup_group` int? · **UK**(`batch_id`,`source_row_no`) | 0 |
+
+색인: `transactions(owner_id, occurred_at)`, `category_id`, `payment_method_id`. RLS 정책 `owner_only`: 서버가 `app.owner_id`를 지정한 접속만 해당 행을 본다(지정 없으면 0행).
+
+### 역할별 권한 (마이그레이션 0002)
+| 역할 | `demo` | `personal` | `app` | 제한 |
+|---|---|---|---|---|
+| `anon`·`authenticated`(API) | 읽기 | 접근 불가(API 미노출) | 접근 불가 | — |
+| `poc_reader_demo` | 읽기 | 불가 | **불가** | 읽기 전용, 5초 |
+| `poc_reader_personal` | 불가 | 읽기(RLS) | 불가 | 읽기 전용, 5초 |
+| `app_service` | 불가 | 불가 | 읽기·**추가만** | 10초 |
+| 관리자(`postgres`) | 전체 | 전체 | 전체 | 마이그레이션·적재 스크립트에서만 |
+
 ## 로그인에 따른 권한 변화 (14 문서 대비)
 | 항목 | 이전(14 문서 S1) | 이번 |
 |---|---|---|
@@ -204,5 +247,6 @@ sequenceDiagram
 - 사용자 정의 지표(`kpi_definitions`)에 작성자를 남길지(지금은 남기지 않음).
 
 ## 변경 이력
+- 2026-10-20 테이블 정의표(열·키·행 수·색인·읽고 쓰는 코드)와 역할별 권한표 추가 (INT-007, 실제 DB 조회 기준)
 - 2026-10-20 app.query_runs에 표시용 열 4개 추가(앱 연결, 마이그레이션 0004)
 - 2026-10-20 초안 작성 (13 문서 ERD에 로그인 반영: profiles, owner_id FK, query_runs.user_id)

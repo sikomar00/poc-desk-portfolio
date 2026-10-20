@@ -27,6 +27,8 @@ depends_on: [12-poc-desk-app, 14-supabase-spec-and-tickets]
 ```
 - `vercel.json`: 모든 요청을 한 함수로 보낸다(`/api/index?__vp=원래경로`). 서버가 원래 경로를 되돌려 화면·API를 구분한다.
 - `.vercelignore`: 비밀·개인 데이터·큰 파일을 올리지 않는다.
+- `.python-version`(`3.12`)과 `vercel.json`의 `regions: ["icn1"]`: 배포 Python 버전과 함수 지역을 **명시적으로 고정**했다(기본값에 기대지 않는다). 미리보기 배포로 `python3.12`·`icn1`을 확인했다.
+- `requirements.txt`: 간접 의존까지 5개를 정확한 버전으로 고정했다.
 - **Vercel에 올린 비밀은 두 개뿐**: 읽기 전용 계산 역할과 서비스 역할의 비밀번호(민감 값으로 저장, 다시 볼 수 없음). **가계부 역할의 비밀번호와 DB 관리자 비밀번호는 올리지 않았다**(최소 권한).
 
 ## 2. 공개를 위해 바꾼 것 (내 PC 전용 규칙 → 공개 규칙)
@@ -65,6 +67,8 @@ depends_on: [12-poc-desk-app, 14-supabase-spec-and-tickets]
 - **속도 제한은 완전한 방어가 아니다.** 서버리스는 인스턴스마다 메모리가 따로라서 "접속자당 90회/분"은 근사치다. 실제 남용 방어는 Vercel의 방화벽·플랜 기능이 필요하다.
 - **콜드 스타트**: 한동안 요청이 없으면 첫 요청이 약 4초 걸린다.
 - **Hobby(무료) 플랜**은 비상업·개인 용도 약관이다. 포트폴리오 데모는 해당하지만 상업적으로 쓰려면 플랜을 바꿔야 한다.
+- **한도 확인(2026-10-20, 공식 문서):** 함수 최대 시간은 Hobby에서 300초(우리는 60초로 보수적 설정), 메모리 2GB, Python 번들 500MB, 배포 하루 100회·시간당 100회, **런타임 로그는 1시간만 보관**(문제가 나면 바로 확인해야 한다). 자세한 표는 [17 문서](17-technical-design.md) 6-4절.
+- **형식 위험:** 우리 진입점(`api/` 폴더의 `handler` 클래스)은 Vercel 문서가 "기존 프로젝트용"으로 분류한다. 신규 형식(`app` 변수의 ASGI/WSGI)으로 옮겨야 할 날이 올 수 있다([17 문서](17-technical-design.md) R3).
 - 공개 앱에서 **로그인 가능한 계정은 본인뿐**이고(가입 닫힘), 로그인해도 공개 모드에서는 정의 저장이 꺼져 있다.
 - **방문자는 AI 모드를 직접 쓸 수 없다.** 서버의 AI 키를 누구나 쓰게 하면 요금이 나가고 남용될 수 있고, 모델 응답이 10~44초로 함수 시간 제한(60초)에 가까워 불안정하기 때문이다. 방문자가 AI 쪽을 볼 수 있게 하려면 실험에서 기록한 실제 모델 출력을 재생하는 방식이 다음 후보다.
 - **AI 모드 호출 응답은 느리다**(공개 주소에서 31.5초). 한도 60초 안이지만 모델이 느린 날에는 시간 초과로 실패할 수 있다(실패하면 오류로 기록).
@@ -82,7 +86,7 @@ GitHub의 Vercel 앱을 이 저장소 하나에만 설치해 연결했고(2026-1
 | 이름 | 종류 |
 |---|---|
 | `POC_DESK_BACKEND=supabase`, `POC_DESK_PUBLIC=1`, `POC_DESK_DB_PERSIST=1`, `POC_DESK_DATA_DIR`, `POC_DESK_REPORT_DIR` | 동작 설정 |
-| `SUPABASE_PROJECT_REF`, `SUPABASE_URL`, `SUPABASE_POOLER_HOST`, `SUPABASE_POOLER_PORT=6543`, `SUPABASE_ANON_KEY` | 접속 정보(공개 값) |
+| `SUPABASE_PROJECT_REF`, `SUPABASE_URL`, `SUPABASE_POOLER_HOST`, `SUPABASE_POOLER_PORT=6543`, `SUPABASE_ANON_KEY` | 접속 정보(공개 값). 옛 `anon` 키는 2026년 말까지 폐기 예정 → [17 문서](17-technical-design.md) R1 |
 | `POC_READER_DEMO_PASSWORD`, `APP_SERVICE_PASSWORD` | **비밀(민감 값)** |
 | `NVIDIA_API_KEY` | **비밀(민감 값), 운영 환경에만** |
 | `LLM_MODEL=openai/gpt-oss-20b`, `POC_DESK_LLM_TIMEOUT=50` | 모델·호출 대기 시간(비밀 아님) |
@@ -92,6 +96,7 @@ GitHub의 Vercel 앱을 이 저장소 하나에만 설치해 연결했고(2026-1
 - 도메인을 `vercel.app` 대신 직접 구입한 주소로 쓸지.
 
 ## 변경 이력
+- 2026-10-20 공식 한도 확인 결과·형식 위험 추가, Python 버전·지역·의존 고정 반영 (INT-007)
 - 2026-10-20 AI 모드를 본인 로그인에만 열고 공개 주소에서 실제 모델 호출 확인(31.5초, 통과)
 - 2026-10-20 GitHub 연결·자동 배포 확인, 공개 주소 보안 시험 결과 추가
 - 2026-10-20 초안 작성 (공개 배포, 발견한 문제 5건, 한계)
