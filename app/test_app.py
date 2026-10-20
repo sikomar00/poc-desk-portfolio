@@ -715,6 +715,16 @@ class DatabaseDialects(unittest.TestCase):
         self.assertIn("연결", db.friendly_error(ConnectionError("x")))
         self.assertIsNone(db.friendly_error(ValueError("not a db error")))
 
+    def test_timestamps_are_korean_time_even_when_the_server_runs_in_utc(self):
+        from datetime import datetime, timedelta, timezone
+        utc = datetime(2026, 10, 20, 6, 48, 0, tzinfo=timezone.utc)
+        self.assertEqual(utc.astimezone(db.KST).isoformat(timespec="seconds"), "2026-10-20T15:48:00+09:00")
+        self.assertEqual(db._aware("2026-10-20T15:48:00+09:00").utcoffset(), timedelta(hours=9))
+        self.assertEqual(db._aware("2026-10-20T15:48:00").utcoffset(), timedelta(hours=9))  # 옛 기록(시간대 없음)은 한국 시간으로 본다
+        rec = engine.run_query("시각", "net_revenue", ["2026-01"], "reference")
+        self.assertTrue(rec["ts"].endswith("+09:00"), rec["ts"])
+        self.assertEqual(len(rec["id"].split("-")[0]), 8)
+
     def test_token_with_wrong_shape_is_rejected_without_network(self):
         for bad in (None, "", "abc", "a.b", "a.b.c.d"):
             self.assertIsNone(db.verify_token(bad))
