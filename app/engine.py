@@ -37,6 +37,7 @@ BLOCK_TEXT = {"empty": "SQL이 비어 있음", "multiple_statements": "여러 �
               "forbidden_keyword": "데이터를 바꾸는 키워드가 들어 있음", "hidden_table": "정답표(ledger)를 읽으려 함"}
 UNIT_LABEL = {"net_revenue": "원", "aov": "원", "paid_orders": "건", "refund_rate": "%", "cancel_rate": "%"}
 BACKEND = "supabase" if db.enabled() else "sqlite"
+KST = db.KST
 PUBLIC = os.environ.get("POC_DESK_PUBLIC") == "1"  # 인터넷에 공개한 데모: 비로그인 실행은 DB에 기록하지 않는다
 DEFAULT_MODEL = os.environ.get("LLM_MODEL", "nvidia/nemotron-3-super-120b-a12b")
 
@@ -181,7 +182,7 @@ def save_definition(name, aliases, formula, include_exclude, period_basis, unit)
     if name in builtin_names:
         raise ValueError(f"'{name}'은(는) 이미 사전에 있는 지표입니다.")
     key = "custom_" + hashlib.sha1(name.encode("utf-8")).hexdigest()[:8]
-    now = datetime.now().isoformat(timespec="seconds")
+    now = datetime.now(KST).isoformat(timespec="seconds")
     alias_list = [a.strip() for a in (aliases or []) if a and a.strip()][:8]
     entry = {"key": key, "name": name, "aliases": alias_list, "formula": formula.strip(),
              "include_exclude": include_exclude.strip(), "period_basis": period_basis.strip(),
@@ -338,8 +339,8 @@ def run_query(question, metric_key, months, mode="reference", model=None, user_i
     if mode == "reference" and not metric["has_reference"]:
         raise ValueError("이 지표에는 검증된 기준 계산식이 없습니다. 'AI가 SQL 생성' 방식을 선택하세요.")
     model = (model or DEFAULT_MODEL).strip()
-    rec = {"id": datetime.now().strftime("%Y%m%d-%H%M%S-") + hashlib.sha1(os.urandom(8)).hexdigest()[:4],
-           "ts": datetime.now().isoformat(timespec="seconds"), "question": question, "metric_key": metric_key,
+    rec = {"id": datetime.now(KST).strftime("%Y%m%d-%H%M%S-") + hashlib.sha1(os.urandom(8)).hexdigest()[:4],
+           "ts": datetime.now(KST).isoformat(timespec="seconds"), "question": question, "metric_key": metric_key,
            "metric_name": metric["name"], "definition_version": metric["version"], "months": months,
            "mode": mode, "model": model if mode == "ai" else None, "sql": None, "value": None,
            "unit": UNIT_LABEL.get(metric_key) or short_unit(metric["unit"]), "elapsed_ms": None, "status": "OK", "error": None,

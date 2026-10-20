@@ -16,9 +16,10 @@ import sys
 import threading
 import urllib.error
 import urllib.request
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+KST = timezone(timedelta(hours=9))  # 한국 시간. 서버리스 서버는 UTC라서 화면·기록 시각이 9시간 어긋나지 않게 명시한다(서머타임 없음)
 APP_DIR = Path(__file__).resolve().parent
 ROOT = APP_DIR.parent
 VENDOR = APP_DIR / "_vendor"
@@ -245,12 +246,18 @@ _COLS = ("run_id, user_id, ts, dataset, definition_id, question, months, mode, m
          "overall, status, error, elapsed_ms, checks, metric_key, metric_name, definition_version, unit")
 
 
+def _aware(ts):
+    """기록 시각 문자열을 시간대가 있는 값으로. 예전 기록처럼 시간대가 없으면 한국 시간으로 본다."""
+    t = datetime.fromisoformat(ts)
+    return t if t.tzinfo else t.replace(tzinfo=KST)
+
+
 def record_run(rec, user_id=None):
     _service.run(
         f"insert into app.query_runs ({_COLS}) values (:run_id, :user_id, :ts, :dataset, :definition_id, :question, "
         ":months, :mode, :model, :sql_text, :value, :reference_value, :overall, :status, :error, :elapsed_ms, "
         "cast(:checks as jsonb), :metric_key, :metric_name, :definition_version, :unit)",
-        run_id=rec["id"], user_id=user_id, ts=datetime.fromisoformat(rec["ts"]).astimezone(), dataset=DATASET,
+        run_id=rec["id"], user_id=user_id, ts=_aware(rec["ts"]), dataset=DATASET,
         definition_id=definition_id(rec["metric_key"], rec["definition_version"]),
         question=rec["question"], months=list(rec["months"]), mode=rec["mode"], model=rec["model"], sql_text=rec["sql"],
         value=rec["value"], reference_value=rec["reference_value"], overall=rec["overall"], status=rec["status"],
@@ -263,7 +270,7 @@ def _row_to_rec(r):
     keys = [c.strip() for c in _COLS.split(",")]
     d = dict(zip(keys, r))
     d["id"] = d.pop("run_id")
-    d["ts"] = d["ts"].astimezone().isoformat(timespec="seconds") if hasattr(d["ts"], "astimezone") else str(d["ts"])
+    d["ts"] = d["ts"].astimezone(KST).isoformat(timespec="seconds") if hasattr(d["ts"], "astimezone") else str(d["ts"])
     d["months"] = list(d["months"] or [])
     for k in ("value", "reference_value"):
         d[k] = float(d[k]) if d[k] is not None else None
