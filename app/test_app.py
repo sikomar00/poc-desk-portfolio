@@ -523,6 +523,119 @@ class SupabaseBackend(unittest.TestCase):
         self.assertEqual(json.loads(d)["user"], {"email": "owner@example.com"})
 
 
+class PublicDemo(unittest.TestCase):
+    """인터넷에 공개한 데모(POC_DESK_PUBLIC=1)의 규칙. 내 PC 전용 규칙과 다르게 동작해야 한다."""
+    @classmethod
+    def setUpClass(cls):
+        cls.srv = server.make_server(0)
+        cls.port = cls.srv.server_address[1]
+        threading.Thread(target=cls.srv.serve_forever, daemon=True).start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.srv.shutdown()
+        cls.srv.server_close()
+
+    req = Http.req
+    post = Http.post
+
+    def setUp(self):
+        self._saved = (server.PUBLIC, engine.PUBLIC, server.RATE_LIMIT, db.PERSIST)
+        server.PUBLIC = engine.PUBLIC = True
+        server._hits.clear()
+
+    def tearDown(self):
+        server.PUBLIC, engine.PUBLIC, server.RATE_LIMIT, db.PERSIST = self._saved
+        server._hits.clear()
+
+    DOMAIN = "demo.example.app"
+
+    def test_any_domain_is_served_but_only_in_public_mode(self):
+        s, h, d = self.req("GET", "/api/status", host=self.DOMAIN)
+        self.assertEqual(s, 200)
+        self.assertTrue(json.loads(d)["public"])
+        server.PUBLIC = False
+        self.assertEqual(self.req("GET", "/api/status", host=self.DOMAIN)[0], 403)  # 내 PC 모드에서는 여전히 막는다
+
+    def test_writes_must_come_from_the_same_origin(self):
+        body = {"question": "2월 매출은?"}
+        ok = self.post("/api/intake", body, host=self.DOMAIN, headers={"Origin": f"https://{self.DOMAIN}"})
+        self.assertEqual(ok[0], 200)
+        evil = self.post("/api/intake", body, host=self.DOMAIN, headers={"Origin": "https://evil.example"})
+        self.assertEqual(evil[0], 403)
+        self.assertEqual(self.post("/api/intake", body, host=self.DOMAIN)[0], 200)  # Origin 이 없는 요청(서버 간 호출)은 헤더 규칙으로 막는다
+        self.assertEqual(self.req("POST", "/api/intake", b"{}", {"Content-Type": "application/json"}, host=self.DOMAIN)[0], 403)
+
+    def test_saving_definitions_is_off(self):
+        body = {"name": "x", "formula": "a", "include_exclude": "b", "period_basis": "c", "unit": "%"}
+        s, _, d = self.post("/api/definition", body, host=self.DOMAIN)
+        self.assertEqual(s, 403)
+        self.assertIn("공개 데모", json.loads(d)["error"])
+
+    def test_hsts_and_security_headers_in_public_mode(self):
+        _, h, _ = self.req("GET", "/", host=self.DOMAIN)
+        lower = {k.lower(): v for k, v in h.items()}
+        self.assertIn("strict-transport-security", lower)
+        self.assertIn("default-src 'self'", lower["content-security-policy"])
+
+    def test_vercel_rewritten_paths_are_restored(self):
+        """Vercel 은 모든 요청을 /api/index?__vp=원래경로 로 넘긴다. 원래 주소의 화면·API 로 동작해야 한다."""
+        s, _, d = self.req("GET", "/api/index?__vp=api/status", host=self.DOMAIN)
+        self.assertEqual(s, 200)
+        self.assertIn("backend", json.loads(d))
+        s, h, d = self.req("GET", "/api/index?__vp=", host=self.DOMAIN)  # 첫 화면
+        self.assertEqual(s, 200)
+        self.assertIn(b"<html", d.lower())
+        s, h, d = self.req("GET", "/api/index?__vp=app.js", host=self.DOMAIN)  # 정적 파일
+        self.assertEqual(s, 200)
+        self.assertIn("javascript", {k.lower(): v for k, v in h.items()}["content-type"])
+        body = {"question": "2월 매출은?"}
+        self.assertEqual(self.post("/api/index?__vp=api/intake", body, host=self.DOMAIN)[0], 200)  # POST 도 복원
+        self.assertEqual(self.req("GET", "/api/index?__vp=api/index", host=self.DOMAIN)[0], 404)  # 자기 자신을 가리켜도 돌지 않는다
+        server.PUBLIC = False
+        self.assertEqual(self.req("GET", "/api/index?__vp=api/status", host=f"127.0.0.1:{self.port}")[0], 404)  # 내 PC 모드에서는 복원하지 않는다
+
+    def test_rate_limit(self):
+        server.RATE_LIMIT = 3
+        codes = [self.req("GET", "/api/status", host=self.DOMAIN)[0] for _ in range(5)]
+        self.assertEqual(codes, [200, 200, 200, 429, 429])
+
+    def test_anonymous_runs_are_not_written_to_the_database(self):
+        saved = (engine.BACKEND, db.record_run)
+        calls = []
+        engine.BACKEND = "supabase"
+        db.record_run = lambda rec, user_id=None: calls.append(user_id)
+        try:
+            engine._save_run({"id": "x"}, None)
+            self.assertEqual(calls, [])  # 비로그인(공개) 실행은 누구나 DB에 행을 쌓지 못하게 기록하지 않는다
+            engine._save_run({"id": "y"}, "user-1")
+            self.assertEqual(calls, ["user-1"])
+            engine.PUBLIC = False
+            engine._save_run({"id": "z"}, None)  # 내 PC 모드는 비로그인도 기록한다
+            self.assertEqual(calls, ["user-1", None])
+        finally:
+            engine.BACKEND, db.record_run = saved
+
+    def test_connections_are_closed_per_request_when_not_persistent(self):
+        class FakeConn:
+            closed = False
+
+            def run(self, stmt, **kw):
+                return [[1]]
+
+            def close(self):
+                FakeConn.closed = True
+
+        for persist, expect_closed in ((False, True), (True, False)):
+            FakeConn.closed = False
+            db.PERSIST = persist
+            sess = db._Session("r", "PW")
+            sess.conn = FakeConn()
+            self.assertEqual(sess.run("select 1"), [[1]])
+            self.assertEqual(FakeConn.closed, expect_closed, persist)
+            self.assertEqual(sess.conn is None, expect_closed, persist)
+
+
 class DatabaseDialects(unittest.TestCase):
     def test_default_backend_is_local_sqlite(self):
         self.assertEqual(engine.BACKEND, "sqlite")
