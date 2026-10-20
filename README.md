@@ -2,7 +2,7 @@
 id: README
 title: realDefinition — 문제 정의 프레임워크 포트폴리오
 status: draft
-updated: 2026-10-19
+updated: 2026-10-20
 ---
 
 # realDefinition — 문제 정의 프레임워크 포트폴리오
@@ -20,7 +20,7 @@ updated: 2026-10-19
 python app/server.py
 ```
 
-테스트는 `python app/test_app.py`, `python experiment/test_experiment.py`로 돌립니다. 추가 설치 없이 Python만 있으면 `http://127.0.0.1:8765`에서 열립니다. 질문 → 정의 확인 → 계산 → 정답 대조 → 리포트 흐름을 눌러 볼 수 있습니다. 자세한 내용은 [docs/12-poc-desk-app.md](docs/12-poc-desk-app.md).
+테스트는 `python app/test_app.py`, `python experiment/test_experiment.py`로 돌립니다. 기본 모드(로컬 SQLite)는 추가 설치 없이 Python만 있으면 `http://127.0.0.1:8765`에서 열립니다. 클라우드 DB(Supabase) 모드는 접속 도구 설치와 환경 설정이 필요합니다([12](docs/12-poc-desk-app.md)). 질문 → 정의 확인 → 계산 → 정답 대조 → 리포트 흐름을 눌러 볼 수 있습니다. 자세한 내용은 [docs/12-poc-desk-app.md](docs/12-poc-desk-app.md).
 
 ## 한 줄 요약
 
@@ -47,9 +47,9 @@ python app/server.py
 | 10 | [회고](docs/10-retrospective.md) | 무엇을 배웠고, 무엇을 틀렸고, 다음에 무엇을 하나? | draft |
 | 11 | [면접 준비 노트](docs/11-interview-prep.md) | 예상 질문에 어떤 근거로 답하나? 내 말로 설명할 수 있나? | draft |
 | 12 | [realDefinition 앱](docs/12-poc-desk-app.md) | 설계한 흐름을 눌러 볼 수 있는 화면은? 무엇을 확인했고 무엇은 못 했나? | draft |
-| 13 | [Supabase DB 기획·ERD](docs/13-supabase-db-plan.md) | 로컬 DB를 클라우드로 옮길 때 무엇을 어떻게 나누고 지키나? (이전은 아직 안 함) | draft |
-| 14 | [Supabase 구현 스펙·티켓](docs/14-supabase-spec-and-tickets.md) | 기획을 만들 수 있는 수준으로 내리면? 무엇으로 합격을 판정하나? (DDL은 미실행 초안) | draft |
-| 15 | [Supabase QA 가이드](docs/15-supabase-qa-guide.md) | 만든 DB가 정말 동작하나? 직접 눌러 확인하는 방법과 QA가 찾은 문제는? | draft |
+| 13 | [Supabase DB 기획·ERD](docs/13-supabase-db-plan.md) | 로컬 DB를 클라우드로 옮길 때 무엇을 어떻게 나누고 지키나? (합성 데이터는 이전·적용 완료, 가계부는 아직) | draft |
+| 14 | [Supabase 구현 스펙·티켓](docs/14-supabase-spec-and-tickets.md) | 기획을 만들 수 있는 수준으로 내리면? 무엇으로 합격을 판정하나? (적용 결과와 점검 기록 포함) | draft |
+| 15 | [Supabase QA 가이드](docs/15-supabase-qa-guide.md) | 만든 DB가 정말 동작하나? 직접 눌러 확인하는 방법과 QA가 찾은 문제는? (점검표는 스프레드시트에 따로 기록) | draft |
 
 코드·데이터: `app/` (realDefinition 로컬 웹앱), `data/` (합성 샘플 DB 생성기, 정의별 검증 스크립트, 가계부 CSV 점검·정의별 계산·앱 합계 대조 스크립트), `experiment/` (실험용 KPI 사전, 질문 20개와 골드 답, H3 테스트 세트). 실데이터는 `data/private/`(Git 제외).
 
