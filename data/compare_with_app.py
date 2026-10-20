@@ -13,7 +13,8 @@ import sqlite3
 import sys
 from pathlib import Path
 
-sys.stdout.reconfigure(encoding="utf-8")
+if hasattr(sys.stdout, "reconfigure"):  # 출력이 파일·테스트용 버퍼로 바뀐 상태에서 불러와도 죽지 않게
+    sys.stdout.reconfigure(encoding="utf-8")
 HERE = Path(__file__).parent
 PRIV = HERE / "private"
 
@@ -50,6 +51,9 @@ def main(path):
     rows = []
     for n, r in res.items():
         diffs = [(r.get(m, 0) / app[m] - 1) * 100 for m in months if app[m]]
+        if not diffs:  # 앱 합계가 모두 0이면 비율을 계산할 수 없다
+            print(f"{n}: 앱 합계가 모두 0이라 차이 비율을 계산하지 못했습니다. 입력 값을 확인하세요.")
+            continue
         exact = sum(1 for m in months if int(r.get(m, 0)) == app[m])
         rows.append((sum(abs(d) for d in diffs) / len(diffs), n, min(diffs), max(diffs), exact))
     for mape, n, lo, hi, exact in sorted(rows):

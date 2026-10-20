@@ -135,6 +135,9 @@ def main():
         shipping = 0 if items_ex_vat >= 50000 else 3000  # 배송비는 매출 제외 대상 (정의 충돌 ①의 일부)
         total = items_ex_vat + vat + shipping
 
+        # 알려진 한계(수정하지 않음): 조건이 '1월 28일 밤'도 월말 경계로 취급한다(진짜 월말은 1/31, 2/28). 이 주문들은 PENDING·CANCELLED가
+        # 되지 못하고 항상 PAID가 되며, 월을 넘기지도 않는다. 고치면 DB의 모든 값(원장, 골드 답, 실험 데이터)이 바뀌어
+        # 이미 끝난 실험 결과(docs/07, 09)와 동결 해시가 무효가 되므로 그대로 둔다. 새 데이터 버전을 만들 때 고칠 것.
         is_boundary = ordered.day in (31, 28) and ordered.hour >= 22 and ordered.month in (1, 2)
         roll = rng.random()
         paid_at = None

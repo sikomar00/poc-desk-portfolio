@@ -7,7 +7,8 @@ import sqlite3
 import sys
 from pathlib import Path
 
-sys.stdout.reconfigure(encoding="utf-8")
+if hasattr(sys.stdout, "reconfigure"):  # 출력이 파일·테스트용 버퍼로 바뀐 상태에서 불러와도 죽지 않게
+    sys.stdout.reconfigure(encoding="utf-8")
 DB = Path(__file__).parent / "poc_desk_sample.db"
 
 # 각 변형은 '한 가지 정의 선택'만 다르다. month 는 '2026-03' 형식.

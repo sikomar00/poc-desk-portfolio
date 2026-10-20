@@ -15,7 +15,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from gold import DB, OUT, gold_sql  # noqa: E402
 
-sys.stdout.reconfigure(encoding="utf-8")
+if hasattr(sys.stdout, "reconfigure"):  # 출력이 파일·테스트용 버퍼로 바뀐 상태에서 불러와도 죽지 않게
+    sys.stdout.reconfigure(encoding="utf-8")
 JAN, FEB, MAR = "2026-01", "2026-02", "2026-03"
 
 # (id, 질문, 지표, 월, 구분, 노리는 지점)
@@ -61,7 +62,9 @@ def main():
     for q in out:
         if q["metric"] == "net_revenue":
             assert round(q["gold_value"]) == sum(ledger[m] for m in q["months"]), q["id"]
-    (OUT / "questions_A_holdout.json").write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
+    # newline="\n": Windows에서도 항상 LF로 써서, 다시 생성해도 파일 바이트(동결 해시)가 바뀌지 않게 한다
+    with open(OUT / "questions_A_holdout.json", "w", encoding="utf-8", newline="\n") as f:
+        f.write(json.dumps(out, ensure_ascii=False, indent=2))
     print(f"{'ID':4s} {'구분':3s} {'지표':12s} {'골드':>14s}  질문")
     for q in out:
         print(f"{q['id']:4s} {q['group']:3s} {q['metric']:12s} {q['gold_value']:>14,.2f}  {q['question']}")

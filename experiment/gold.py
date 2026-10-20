@@ -11,7 +11,8 @@ import sqlite3
 import sys
 from pathlib import Path
 
-sys.stdout.reconfigure(encoding="utf-8")
+if hasattr(sys.stdout, "reconfigure"):  # 출력이 파일·테스트용 버퍼로 바뀐 상태에서 불러와도 죽지 않게
+    sys.stdout.reconfigure(encoding="utf-8")
 ROOT = Path(__file__).resolve().parent.parent
 DB = ROOT / "data" / "poc_desk_sample.db"
 OUT = Path(__file__).parent
@@ -93,7 +94,9 @@ def main():
         if q["metric"] == "net_revenue":
             expect = sum(ledger[m] for m in q["months"])
             assert round(q["gold_value"]) == expect, (q["id"], q["gold_value"], expect)
-    (OUT / "questions_A.json").write_text(json.dumps(questions, ensure_ascii=False, indent=2), encoding="utf-8")
+    # newline="\n": Windows에서도 항상 LF로 써서, 다시 생성해도 파일 바이트(해시)가 바뀌지 않게 한다
+    with open(OUT / "questions_A.json", "w", encoding="utf-8", newline="\n") as f:
+        f.write(json.dumps(questions, ensure_ascii=False, indent=2))
 
     # H3: 틀린 매출 SQL 10개 = 오답 정의 V0~V4 x 2개월. 공식(V5)은 정답이므로 제외한다.
     variants = load_variants()
@@ -107,7 +110,8 @@ def main():
             cases.append({"id": f"H3-{len(cases) + 1:02d}", "wrong_definition": name, "month": month,
                           "sql": wrapped, "claimed_value": claimed, "ledger_value": ledger[month],
                           "should_flag": claimed != ledger[month]})
-    (OUT / "h3_cases.json").write_text(json.dumps(cases, ensure_ascii=False, indent=2), encoding="utf-8")
+    with open(OUT / "h3_cases.json", "w", encoding="utf-8", newline="\n") as f:
+        f.write(json.dumps(cases, ensure_ascii=False, indent=2))
 
     print(f"{'ID':4s} {'지표':12s} {'골드 답':>16s}  질문")
     for q in questions:

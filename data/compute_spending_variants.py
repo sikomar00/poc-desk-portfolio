@@ -14,7 +14,8 @@ import sqlite3
 import sys
 from pathlib import Path
 
-sys.stdout.reconfigure(encoding="utf-8")
+if hasattr(sys.stdout, "reconfigure"):  # 출력이 파일·테스트용 버퍼로 바뀐 상태에서 불러와도 죽지 않게
+    sys.stdout.reconfigure(encoding="utf-8")
 PRIV = Path(__file__).parent / "private"
 SRC = PRIV / "transaction.csv"
 DB = PRIV / "bank.db"
