@@ -1,8 +1,8 @@
 ---
 id: README
 title: realDefinition — 문제 정의 프레임워크 포트폴리오
-status: draft
-updated: 2026-10-20
+status: final
+updated: 2026-10-22
 ---
 
 # realDefinition — 문제 정의 프레임워크 포트폴리오
@@ -45,7 +45,7 @@ python app/server.py
 | 핵심 문제 | 지표 정의(예: "매출")가 문서화되지 않아 같은 질문에 담당자·AI마다 다른 숫자가 나옴 |
 | 해결 방향 | 요구 한 줄 → 모호함 질문 → KPI 정의서 확정 → SQL 생성·실행 → 합계 검증 → PoC 리포트 |
 | 핵심 결과 | 정의가 다르면 숫자 최대 **+36%** 차이 · KPI 사전으로 정확도 **+52~65%p** · 그러나 일관성 71~74%로 기준(90%) 미달이라 판정은 **"불명"** · 대사로 오답 **14/14** 검출 |
-| 두 공고 연결 | AI-BI: KPI 정의·Text-to-SQL·RAG / R&D: PoC 설계·검증·문서화 |
+| 다룬 역량 | 데이터·AI: KPI 정의·Text-to-SQL·검증 / PoC: 설계·실험·문서화 |
 
 ## 작업 의도 문서
 

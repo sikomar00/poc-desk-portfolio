@@ -1,8 +1,8 @@
 ---
 id: 07-experiment-results
 title: 실험 결과 — KPI 사전과 AI의 숫자 정확도·일치율
-status: draft
-updated: 2026-10-19
+status: final
+updated: 2026-10-22
 depends_on: [06-experiment-design, 02-thinking-log]
 ---
 
